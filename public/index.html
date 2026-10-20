@@ -71,6 +71,7 @@ input[type=text],input[type=tel],input[type=email]{width:100%;font-size:16px;pad
     <h2>ご予約</h2><div class="en">RESERVATION</div>
     <b>① メニューを選ぶ</b>
     <div class="menus" id="menuList" style="margin-top:8px"></div>
+    <div id="otherMenus" style="display:none;margin-top:12px"><p class="note" id="otherMenusNote" style="margin:0 0 6px"></p><a class="linebtn" id="otherLine" href="#" target="_blank" rel="noopener" style="margin-top:0">LINE で相談する</a></div>
   </div>
   <div class="card">
     <b>② 日にちと時間を選ぶ</b>
@@ -125,6 +126,7 @@ function applyShop(){
   if(SHOP.lineUrl){lb.href=SHOP.lineUrl;lb.style.display="block"}
   if(SHOP.tel){tb.href="tel:"+String(SHOP.tel).replace(/[^0-9+]/g,"");tb.textContent="電話する　"+SHOP.tel;tb.style.display="block"}
   if(SHOP.lineUrl||SHOP.tel)o.style.display="block";
+  if(SHOP.otherMenusNote){document.getElementById("otherMenusNote").textContent=SHOP.otherMenusNote;var ol=document.getElementById("otherLine");if(SHOP.lineUrl)ol.href=SHOP.lineUrl;else ol.style.display="none";document.getElementById("otherMenus").style.display="block"}
   var w=[];if(SHOP.lineUrl)w.push("LINE");if(SHOP.tel)w.push("お電話");
   document.getElementById("custNote").textContent="※完全予約制です。表示のない日・時間は、"+(w.length?w.join("・")+"で":"お店に")+"ご相談ください。";
 }
@@ -161,7 +163,7 @@ function openForm(k,t){
    "<label class='f'>お名前<span class='req'>必須</span></label><input type='text' id='fName' autocomplete='name' placeholder='例：山田 花子'>"+
    "<label class='f'>電話番号<span class='req'>必須</span></label><input type='tel' id='fTel' autocomplete='tel' placeholder='例：090-1234-5678'>"+
    (SHOP.askEmail?"<label class='f'>メールアドレス（確認メールが届きます・任意）</label><input type='email' id='fMail' autocomplete='email'>":"")+
-   "<div class='policy'><b>キャンセルについて</b><br>"+esc(SHOP.cancelPolicy)+"<br>ご変更・キャンセルは LINE かお電話でお知らせください。<label class='agree'><input type='checkbox' id='fAgree' onchange=\"document.getElementById('fSend').disabled=!this.checked\">キャンセルの決まりを確認しました</label></div>"+
+   "<div class='policy'><b>キャンセルについて</b><br>"+esc(SHOP.cancelPolicy)+"<br>ご変更・キャンセルは LINE かお電話でお知らせください。"+(SHOP.notice?"<br><b>"+esc(SHOP.notice)+"</b>":"")+"<label class='agree'><input type='checkbox' id='fAgree' onchange=\"document.getElementById('fSend').disabled=!this.checked\">キャンセルの決まりを確認しました</label></div>"+
    "<div class='err' id='fErr'></div><button class='btn main' id='fSend' onclick='send()' disabled>この内容で予約する</button><button class='btn ghost' onclick='closeForm()'>やめる</button>";
   document.getElementById("sheet").classList.add("on");
 }
