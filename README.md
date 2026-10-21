@@ -6,7 +6,8 @@
 - `public/shop.jsonc` … **お店ごとの値はここだけ**（店名・色・LINE・電話・メニュー・片づけの分・きざみ・型の初期値・キャンセルの文・知らせの送り先・何日先まで・当日は何分前まで）
 - `public/index.html` … お客さんの予約ページ
 - `public/admin.html` … お店の画面（`/admin`。パスワード付き。ホーム画面に置くと「〇〇 予約管理」）
-- `src/worker.js` … API（Cloudflare Workers）。保存は D1。表は最初のアクセスで自動で作る。**名前・電話・メールは保存しない**（予約が成功したら画面から Formspree へ送る）。日付・時刻は日本時間
+- `src/worker.js` … API（Cloudflare Workers）。保存は D1。表は最初のアクセスで自動で作る。**名前・電話・メールは保存しない**。日付・時刻は日本時間
+- `gas/Code.gs`・`gas/入れ方.md` … **お店の Gmail からメールを送る係**（Google Apps Script。2026/10/21）。shop.jsonc の `notify` が `"gas"` のとき、予約の枠を押さえたあと Worker がここへ送り、お客さんへ確認メール・お店へ知らせの2通が出る。送れなければ枠を取り消して「完了できませんでした」。URL と合言葉は秘密の変数 `GAS_URL`・`GAS_TOKEN`（`wrangler secret put`／手元は `.dev.vars`）。`notify` が `"formspree"` なら前の形（画面から Formspree へ）
 - `tools/make_icon.py` … ホーム画面のアイコン `public/icon-180.png` を shop.jsonc の色で作る
 - `wrangler.jsonc` … Cloudflare の設定（name・D1 の database_id）。`schema.sql` は表の控え
 

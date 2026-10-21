@@ -8,7 +8,10 @@
 <!--
   Lift-Off 部品「予約カレンダー」お客さんの画面（2026/10/20）。お店ごとの値は /shop.jsonc（店名・色・メニュー・片づけの分 など）。
   考え方：お店は「営業時間」だけ入れる → お客さんがメニューを選ぶと、メニューの長さ＋片づけの時間で空いている開始時間が出る → 予約が入るとその分だけ埋まる。
-  サーバー（/api）が持つのは「日にち・時間・埋まっている時間」だけ。名前・電話・メールは保存せず、この画面から Formspree（お店のメール）へ送る。
+  サーバー（/api）が持つのは「日にち・時間・埋まっている時間」だけ。名前・電話・メールは保存しない。
+  知らせの送り方は shop.jsonc の notify（2026/10/21）：
+    "gas"       … 名前・電話・メールを /api/book に渡し、サーバーがお店の Gmail（GAS）から確認メール＋知らせを送る。メールは必須。送れなければ予約は取り消され、案内が出る
+    "formspree" … 前の形。予約が入ったあと、この画面から Formspree へ送る
 -->
 <style>
 :root{--main:#e58ca0;--sub:#a8834f;--ink:#4a3a35;--soft:#fbeff2;--bg:#f7f2ea;--line:#e8dccf;--ok:#2f7a42;--okbg:#eef8f0;--okbd:#9fd3ab;--mute:#9c8a80}
@@ -162,7 +165,8 @@ function openForm(k,t){
    "<div class='selbox'>"+jp(k)+"　"+t+"〜"+t2(m2(t)+m.min)+"<br><span style='font-weight:normal'>"+esc(m.name)+"（"+m.min+"分）"+(m.price?"　"+esc(m.price):"")+"</span></div>"+
    "<label class='f'>お名前<span class='req'>必須</span></label><input type='text' id='fName' autocomplete='name' placeholder='例：山田 花子'>"+
    "<label class='f'>電話番号<span class='req'>必須</span></label><input type='tel' id='fTel' autocomplete='tel' placeholder='例：090-1234-5678'>"+
-   (SHOP.askEmail?"<label class='f'>メールアドレス（確認メールが届きます・任意）</label><input type='email' id='fMail' autocomplete='email'>":"")+
+   (useGas()?"<label class='f'>メールアドレス<span class='req'>必須</span></label><input type='email' id='fMail' autocomplete='email' inputmode='email' placeholder='例：hanako@example.com'><p class='note' style='margin:4px 0 0'>確認メールをお送りします。お間違いのないようにご入力ください。</p>":
+    SHOP.askEmail?"<label class='f'>メールアドレス（確認メールが届きます・任意）</label><input type='email' id='fMail' autocomplete='email'>":"")+
    "<div class='policy'><b>キャンセルについて</b><br>"+esc(SHOP.cancelPolicy)+"<br>ご変更・キャンセルは LINE かお電話でお知らせください。"+(SHOP.notice?"<br><b>"+esc(SHOP.notice)+"</b>":"")+"<label class='agree'><input type='checkbox' id='fAgree' onchange=\"document.getElementById('fSend').disabled=!this.checked\">キャンセルの決まりを確認しました</label></div>"+
    "<div class='err' id='fErr'></div><button class='btn main' id='fSend' onclick='send()' disabled>この内容で予約する</button><button class='btn ghost' onclick='closeForm()'>やめる</button>";
   document.getElementById("sheet").classList.add("on");
@@ -170,20 +174,31 @@ function openForm(k,t){
 function closeForm(){document.getElementById("sheet").classList.remove("on");cur=null}
 document.getElementById("sheet").onclick=function(e){if(e.target.id=="sheet")closeForm()};
 
+function useGas(){return SHOP&&SHOP.notify=="gas"}
+
 function send(){
-  var n=document.getElementById("fName").value.trim(),t=document.getElementById("fTel").value.trim(),ml=SHOP.askEmail?document.getElementById("fMail").value.trim():"",e=document.getElementById("fErr");
+  var n=document.getElementById("fName").value.trim(),t=document.getElementById("fTel").value.trim(),ml=(useGas()||SHOP.askEmail)?document.getElementById("fMail").value.trim():"",e=document.getElementById("fErr");
   if(!n){e.textContent="お名前を入れてください";return}
   if(!/^[0-9\-]{10,13}$/.test(t)){e.textContent="電話番号を数字で入れてください";return}
+  if(useGas()&&!ml){e.textContent="メールアドレスを入れてください（確認メールをお送りします）";return}
   if(ml&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ml)){e.textContent="メールアドレスの形を確かめてください";return}
   var m=SHOP.menus[cur.m], c=cur, btn=document.getElementById("fSend");
   btn.disabled=true;btn.textContent="送っています…";e.textContent="";
-  // 1) サーバーに枠を取ってもらう（名前・電話は送らない）
-  fetch("/api/book",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({date:c.k,start:c.t,minutes:m.min,menu:m.name})})
+  var body={date:c.k,start:c.t,minutes:m.min,menu:m.name};
+  if(useGas()){body.name=n;body.tel=t;body.email=ml}   // gas：サーバーがメールを送る（保存はしない）。formspree：名前・電話は送らない
+  // 1) サーバーに枠を取ってもらう
+  fetch("/api/book",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
   .then(function(r){return r.json().then(function(j){return {status:r.status,body:j}})})
   .then(function(res){
     if(res.status==409){e.textContent="すみません、たった今ほかの方の予約が入りました。別の時間をお選びください。";btn.disabled=false;btn.textContent="この内容で予約する";load();return}
+    if(res.status==502){e.innerHTML="<div class='warn'>"+esc((res.body&&res.body.error)||"ご予約を完了できませんでした。お手数ですが LINE かお電話でご連絡ください")+"</div>";btn.disabled=false;btn.textContent="この内容で予約する";load();return}
     if(res.status!=200){e.textContent=(res.body&&res.body.error)||"予約できませんでした。もう一度お試しください。";btn.disabled=false;btn.textContent="この内容で予約する";return}
     var when=jp(c.k)+" "+c.t+"〜"+t2(m2(c.t)+m.min);
+    if(useGas()){
+      // gas：メールはもう送られている
+      document.getElementById("sheetBox").innerHTML="<div class='thanks'><div class='big'>✓</div><b>ご予約を受け付けました</b><p class='note'>"+esc(when)+"<br>"+esc(m.name)+"</p><p class='note'>"+esc(ml)+" に確認メールをお送りしました。届かないときは迷惑メールもご確認ください。<br>当日お待ちしております。</p><button class='btn main' onclick='closeForm()'>とじる</button></div>";
+      load();return;
+    }
     // 2) お店へ知らせる（Formspree）。失敗しても予約は取り消さない
     var fd={_subject:"【ネット予約 "+SHOP.shopName+"】"+when, "日時":when, "メニュー":m.name+"（"+m.min+"分）", "お名前":n, "電話":t, "メール":ml||"（なし）", "キャンセル規定に同意":"はい", "予約の番号":res.body.id||""};
     if(ml)fd.email=ml;

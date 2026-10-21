@@ -1,8 +1,12 @@
 // 予約カレンダー（Lift-Off の部品）の API　2026/10/20（10/20 夜：お店ごとの値を public/shop.jsonc に。日本時間で計算）
-// 持つのは「日にち・時間・埋まっている時間」だけ。名前・電話・メールは保存しない（Formspree へ画面から直接送る）
+// 持つのは「日にち・時間・埋まっている時間」だけ。名前・電話・メールは保存しない
+// 知らせの送り方は shop.jsonc の notify（2026/10/21）：
+//   "gas"       … /api/book が名前・電話・メールも受け取り、枠を押さえたあと GAS（お店の Gmail）へ送る。GAS が失敗したら枠を取り消して 502
+//                 GAS の URL と合言葉は秘密の変数 GAS_URL・GAS_TOKEN（本番 wrangler secret put／手元 .dev.vars）
+//   "formspree" … 前の形。画面から Formspree へ直接送る（Worker は名前・電話を受け取らない）
 //
 // GET  /api/days                      今日以降（daysAhead 日先まで）の営業時間と、埋まっている時間（中身は出さない。kind は 'busy'）。今の時刻（日本時間）も返す
-// POST /api/book {date,start,minutes} 営業時間内か・重なりがないか・締切を過ぎていないかを確かめて入れる（片づけ bufferMin を足す）。重なったら 409
+// POST /api/book {date,start,minutes,menu[,name,tel,email]} 営業時間内か・重なりがないか・締切を過ぎていないかを確かめて入れる（片づけ bufferMin を足す）。重なったら 409
 // /api/admin/…（ヘッダー X-Admin-Password が secret ADMIN_PASSWORD と同じときだけ）
 //   POST   /api/admin/login                      合っていれば ok
 //   GET    /api/admin/all                        hours・blocks（kind・menu つき）・settings
@@ -24,6 +28,38 @@ var BUFFER_MIN = +SHOP.bufferMin || 20;
 var STEP_MIN = +SHOP.stepMin || 30;
 var DAYS_AHEAD = +SHOP.daysAhead || 60;
 var CUTOFF_MIN = (SHOP.sameDayCutoffMin === undefined) ? 120 : +SHOP.sameDayCutoffMin;
+var USE_GAS = SHOP.notify === 'gas';
+var FAIL_MSG = 'ご予約を完了できませんでした。お手数ですが LINE かお電話でご連絡ください';
+
+// 予約を受け付けられるか（gas：秘密の変数とお店のメールがそろっている／formspree：URL がある）
+function isOpen(env) {
+  if (USE_GAS) return !!(env.GAS_URL && env.GAS_TOKEN && SHOP.mail);
+  return !!SHOP.formspree;
+}
+var DOW = ['日', '月', '火', '水', '木', '金', '土'];
+function jpDate(k) {
+  var d = new Date(k + 'T00:00:00Z');
+  return (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日（' + DOW[d.getUTCDay()] + '）';
+}
+
+// GAS（お店の Gmail から送る係）へ送る。返事が {ok:true} のときだけ true。25 秒で打ち切り
+async function sendGas(env, payload) {
+  var ctl = new AbortController();
+  var tm = setTimeout(function () { ctl.abort(); }, 25000);
+  try {
+    var r = await fetch(env.GAS_URL, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload), redirect: 'follow', signal: ctl.signal
+    });
+    var t = await r.text(), j = null;
+    try { j = JSON.parse(t); } catch (e) { }
+    return !!(r.ok && j && j.ok === true);
+  } catch (e) {
+    return false;
+  } finally {
+    clearTimeout(tm);
+  }
+}
 
 // 表を最初のリクエストで作る（Workers Builds では migrations が自動で走らないため。schema.sql と同じ内容）
 var SCHEMA = [
@@ -78,13 +114,21 @@ async function handleDays(env) {
   var bl = (await env.DB.prepare('SELECT date, s, e FROM blocks WHERE date >= ?1 AND date <= ?2 ORDER BY date, s').bind(now.date, last).all()).results;
   var busy = {};
   bl.forEach(function (b) { (busy[b.date] = busy[b.date] || []).push({ s: b.s, e: b.e, kind: 'busy' }); });
-  return json({ today: now.date, now: t2(now.min), bufferMin: BUFFER_MIN, stepMin: STEP_MIN, daysAhead: DAYS_AHEAD, sameDayCutoffMin: CUTOFF_MIN, open: !!SHOP.formspree, hours: hours, busy: busy });
+  return json({ today: now.date, now: t2(now.min), bufferMin: BUFFER_MIN, stepMin: STEP_MIN, daysAhead: DAYS_AHEAD, sameDayCutoffMin: CUTOFF_MIN, open: isOpen(env), hours: hours, busy: busy });
 }
 
 async function handleBook(request, env) {
-  if (!SHOP.formspree) return json({ error: 'ただいまネット予約の準備中です。LINE かお電話でお願いします' }, 503);
+  if (!isOpen(env)) return json({ error: 'ただいまネット予約の準備中です。LINE かお電話でお願いします' }, 503);
   var b = await readJson(request);
   if (!b || !isDate(b.date) || !isTime(b.start) || !(b.minutes > 0 && b.minutes <= 240)) return json({ error: '入力が足りません' }, 400);
+  var cust = null;   // gas のときだけ。保存はしない（GAS へ渡すだけ）
+  if (USE_GAS) {
+    var name = String(b.name || '').trim().slice(0, 40), tel = String(b.tel || '').trim(), email = String(b.email || '').trim();
+    if (!name) return json({ error: 'お名前を入れてください' }, 400);
+    if (!/^[0-9\-]{10,13}$/.test(tel)) return json({ error: '電話番号を数字で入れてください' }, 400);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 100) return json({ error: 'メールアドレスの形を確かめてください' }, 400);
+    cust = { name: name, tel: tel, email: email };
+  }
   var now = nowJST();
   if (b.date < now.date) return json({ error: '過ぎた日です' }, 400);
   if (b.date > addDays(now.date, DAYS_AHEAD)) return json({ error: '先すぎる日です（' + DAYS_AHEAD + '日先まで）' }, 400);
@@ -97,6 +141,21 @@ async function handleBook(request, env) {
   var id = newId();
   var ok = await insertBlock(env.DB, { id: id, date: b.date, s: t2(s), e: t2(eb), kind: 'net', menu: String(b.menu || '').slice(0, 40), created_at: new Date().toISOString() });
   if (!ok) return json({ error: 'たった今ほかの方の予約が入りました' }, 409);
+  if (USE_GAS) {
+    // 枠を押さえたあとにメールを送る。送れなければ枠を取り消す（枠だけ埋まってメールが来ない、を起こさない）
+    var menu = null;
+    (SHOP.menus || []).forEach(function (m) { if (m.name === b.menu) menu = m; });
+    var sent = await sendGas(env, {
+      token: env.GAS_TOKEN,
+      customer: cust,
+      booking: { id: id, date: b.date, when: jpDate(b.date) + ' ' + t2(s) + '〜' + t2(e), start: t2(s), end: t2(e), menu: String(b.menu || ''), min: Number(b.minutes), price: menu ? menu.price : '' },
+      shop: { name: SHOP.shopName, tel: SHOP.tel || '', line: SHOP.lineUrl || '', mail: SHOP.mail, address: SHOP.address || '', parking: SHOP.parking || '', cancelPolicy: SHOP.cancelPolicy || '' }
+    });
+    if (!sent) {
+      await env.DB.prepare('DELETE FROM blocks WHERE id = ?1').bind(id).run();
+      return json({ error: FAIL_MSG }, 502);
+    }
+  }
   return json({ ok: true, id: id, date: b.date, s: t2(s), e: t2(e), busyUntil: t2(eb) });
 }
 
