@@ -36,10 +36,10 @@
   "askEmail": true,
   // 知らせの送り方（2026/10/21）："gas" ＝ お店の Gmail（Google Apps Script）から、お客さんへ確認メール＋お店へ知らせ。"formspree" ＝ 前の形（画面から Formspree へ）
   "notify": "gas",
-  "mail": "liftoff.358@gmail.com",     // 試し用（10/21 の打ち合わせまで）。公開のときは GAS を入れた Google のメール（しほさん）に。確認メールの返信先と、お店への知らせの宛先
+  "mail": "coloreyomogi.com@gmail.com",   // お店のメール（10/21 決定。GAS もこのアカウントに入れる）。確認メールの返信先と、お店への知らせの宛先
   "address": "〒747-0011 山口県防府市岸津2丁目3-10 ハイム桜の園203号室",   // 確認メールに書く
   "parking": "駐車場は15番をご利用ください。",                             // 確認メールに書く
-  "formspree": "",                     // notify が formspree のときだけ使う（colore では使わない。注釈に引用符は書けない）
+  "formspree": "",                     // notify が formspree のときだけ使う（colore では使わない・作らない。10/21 決定。注釈に引用符は書けない）
   "daysAhead": 60,                     // 仮（何日先まで。営業日の型を入れた日だけ出るので、ふだんは効かない）
   "sameDayCutoffMin": 60               // 仮（当日は1時間前まで）
 }
