@@ -57,7 +57,7 @@ function customerBody(c, b, s) {
   L.push('');
   L.push('■ 日時　　' + b.when);
   L.push('■ メニュー　' + b.menu + '（' + b.min + '分）');
-  if (b.price) L.push('■ 料金　　' + b.price + '（税込）');
+  if (b.price) L.push('■ 料金　　' + b.price + (/円/.test(b.price) ? '（税込）' : ''));   // 「お問い合わせください」のときは（税込）を付けない
   L.push('');
   L.push('■ キャンセルについて');
   L.push(s.cancelPolicy || '前日のキャンセルは料金の50%、当日のキャンセルは料金の100%をいただきます。');

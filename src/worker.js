@@ -26,7 +26,9 @@ function parseJsonc(t) {
 var SHOP = parseJsonc(shopText);
 var BUFFER_MIN = +SHOP.bufferMin || 20;
 var STEP_MIN = +SHOP.stepMin || 30;
-var DAYS_AHEAD = +SHOP.daysAhead || 60;
+var DAYS_AHEAD = +SHOP.daysAhead || 0;   // 0 ＝ 上限なし（営業時間を入れた日はすべて受ける。2026/10/21）
+var LAST_DATE = '9999-12-31';
+function lastDate(today) { return DAYS_AHEAD > 0 ? addDays(today, DAYS_AHEAD) : LAST_DATE; }
 var CUTOFF_MIN = (SHOP.sameDayCutoffMin === undefined) ? 120 : +SHOP.sameDayCutoffMin;
 var USE_GAS = SHOP.notify === 'gas';
 var FAIL_MSG = 'ご予約を完了できませんでした。お手数ですが LINE かお電話でご連絡ください';
@@ -109,7 +111,7 @@ async function insertBlock(db, b) {
 }
 
 async function handleDays(env) {
-  var now = nowJST(), last = addDays(now.date, DAYS_AHEAD);
+  var now = nowJST(), last = lastDate(now.date);
   var hours = (await env.DB.prepare('SELECT date, s, e FROM hours WHERE date >= ?1 AND date <= ?2 ORDER BY date').bind(now.date, last).all()).results;
   var bl = (await env.DB.prepare('SELECT date, s, e FROM blocks WHERE date >= ?1 AND date <= ?2 ORDER BY date, s').bind(now.date, last).all()).results;
   var busy = {};
@@ -131,7 +133,7 @@ async function handleBook(request, env) {
   }
   var now = nowJST();
   if (b.date < now.date) return json({ error: '過ぎた日です' }, 400);
-  if (b.date > addDays(now.date, DAYS_AHEAD)) return json({ error: '先すぎる日です（' + DAYS_AHEAD + '日先まで）' }, 400);
+  if (DAYS_AHEAD > 0 && b.date > addDays(now.date, DAYS_AHEAD)) return json({ error: '先すぎる日です（' + DAYS_AHEAD + '日先まで）' }, 400);
   var s = m2(b.start), e = s + Number(b.minutes), eb = e + BUFFER_MIN;
   if (b.date === now.date && s < now.min + CUTOFF_MIN) return json({ error: '当日は ' + CUTOFF_MIN + ' 分前までのご予約です。LINE かお電話でお願いします' }, 400);
   var h = await env.DB.prepare('SELECT s, e FROM hours WHERE date = ?1').bind(b.date).first();
