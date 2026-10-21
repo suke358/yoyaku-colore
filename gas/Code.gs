@@ -1,6 +1,6 @@
 // 予約カレンダー（Lift-Off の部品）：お店の Gmail からメールを送る係（Google Apps Script）2026/10/21
 // Worker（src/worker.js）が、予約の枠を押さえたあとに、ここへ JSON を POST する。
-// 送るのは2通：(a) お客さんへ確認メール (b) お店へ知らせ。MailApp だけを使う（許可を「メールの送信」だけにするため。GmailApp は使わない）
+// 送るのは2通：(a) お客さんへ確認メール (b) お店へ知らせ。MailApp だけを使う（許可を「メールの送信」だけにするため。appsscript.json の oauthScopes で送信だけに絞る）
 // お店の情報（店名・電話・LINE・住所・駐車場・メール・キャンセルの決まり）は Worker が shop.jsonc から渡す。ここには書かない。
 // 合言葉：「スクリプト プロパティ」の GAS_TOKEN。Worker の秘密の変数 GAS_TOKEN と同じ値にする。合わなければ何もしない。
 // 入れ方は gas/入れ方.md
