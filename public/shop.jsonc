@@ -44,6 +44,10 @@
   "mail": "coloreyomogi.com@gmail.com",   // お店のメール（10/21 決定。GAS もこのアカウントに入れる）。確認メールの返信先と、お店への知らせの宛先
   "address": "〒747-0011 山口県防府市岸津2丁目3-10 ハイム桜の園203号室",   // 確認メールに書く
   "parking": "駐車場は15番をご利用ください。",                             // 確認メールに書く
+  "mapUrl": "https://www.google.com/maps/search/?api=1&query=col%C3%B3re&query_place_id=ChIJfzEnY-6TRDUR4VzRms3tsvo",   // 地図のリンク（完了画面・確認メール）。HP の「道順を見る」と同じ、お店のページで開くリンク。# の付いた住所は使わない（決定事項 08）
+  "taxNote": "※料金はすべて税込です",   // メニュー一覧の上の1行（2026/10/25）
+  "backUrl": "https://colore-yomogi.com/",   // もどるリンクの行き先（お店のホームページ）
+  "backText": "← colore のホームページにもどる",   // もどるリンクの文言
   "formspree": "",                     // notify が formspree のときだけ使う（colore では使わない・作らない。10/21 決定。注釈に引用符は書けない）
   "daysAhead": 0,                      // 何日先まで受けるか。0 ＝ 上限なし（お店の画面で営業日を入れた日はすべて受ける）
   "sameDayCutoffMin": 60               // 当日は1時間前まで
