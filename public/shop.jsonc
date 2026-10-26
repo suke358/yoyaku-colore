@@ -50,5 +50,6 @@
   "backText": "← colore のホームページにもどる",   // もどるリンクの文言
   "formspree": "",                     // notify が formspree のときだけ使う（colore では使わない・作らない。10/21 決定。注釈に引用符は書けない）
   "daysAhead": 0,                      // 何日先まで受けるか。0 ＝ 上限なし（お店の画面で営業日を入れた日はすべて受ける）
+  "allowOrigins": ["https://preview-colore-website.liftoff-358.workers.dev"],   // お店の HP から /api/days（空き）を読める許可。いまは確認用の HP だけ（本番の HP・github.io は入れない。2026/10/26）
   "sameDayCutoffMin": 60               // 当日は1時間前まで
 }
