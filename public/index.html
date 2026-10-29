@@ -57,6 +57,16 @@ input[type=text],input[type=tel],input[type=email]{width:100%;font-size:16px;pad
 .agree{display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-size:14px}
 .agree input{width:20px;height:20px;margin-top:2px;flex:none}
 .err{color:#d33;font-size:13px;min-height:18px;margin-top:6px}
+/* 送信前の「入力内容の確認」画面（2026/10/29）。入力画面（#fForm）は隠すだけで消さない（「直す」で値が残る） */
+.cf-h{font-weight:bold;font-size:16px;margin:4px 0 10px;text-align:center}
+.cf-note{font-size:13px;color:#7d6a62;text-align:center;margin:0 0 10px}
+.cf-row{border-bottom:1px dotted var(--line);padding:9px 0}
+.cf-row:last-child{border-bottom:0}
+.cf-k{display:block;font-size:12px;color:var(--mute);margin-bottom:2px}
+.cf-v{display:block;font-size:16px;word-break:break-all}
+.cf-mail{background:var(--soft);border:1.5px solid var(--main);border-radius:10px;padding:10px 12px;margin:10px 0 4px}
+.cf-mail .cf-v{font-size:18px;font-weight:bold}
+.cf-mail .cf-m{display:block;font-size:12.5px;color:#7d6a62;margin-top:4px}
 .btn{display:block;width:100%;border:0;border-radius:12px;padding:13px;font-size:16px;font-weight:bold;margin-top:12px}
 .btn.main{background:var(--main);color:#fff}
 .btn.main:disabled{opacity:.45}
@@ -250,24 +260,53 @@ function pickDay(k){daySel=k;renderCust()}
 function openForm(k,t){
   var ms=selMenus();cur={k:k,t:t,m:menuSel.slice()};
   document.getElementById("sheetBox").innerHTML=
+   "<div id='fForm'>"+
    "<div class='selbox'>"+jp(k)+"　"+t+"〜<br><span style='font-weight:normal;font-size:13px'>"+sumHtml(ms)+"</span></div>"+
    "<label class='f'>お名前<span class='req'>必須</span></label><input type='text' id='fName' autocomplete='name' placeholder='例：山田 花子'>"+
    "<label class='f'>電話番号<span class='req'>必須</span></label><input type='tel' id='fTel' autocomplete='tel' placeholder='例：090-1234-5678'>"+
    "<label class='f'>メールアドレス<span class='req'>必須</span></label><input type='email' id='fMail' autocomplete='email' inputmode='email' placeholder='例：hanako@example.com'><p class='note' style='margin:4px 0 0'>確認メールをお送りします。お間違いのないようにご入力ください。</p>"+(SHOP.demo===true?"<p class='note' style='margin:6px 0 0'><b>デモです。実際のお名前・電話・メールは入れないでください</b></p>":"")+
    "<div class='policy'><b>キャンセルについて</b><br>"+esc(SHOP.cancelPolicy)+"<br>ご変更・キャンセルは LINE かお電話でお知らせください。"+(SHOP.notice?"<br><b>"+esc(SHOP.notice)+"</b>":"")+"<label class='agree'><input type='checkbox' id='fAgree' onchange=\"document.getElementById('fSend').disabled=!this.checked\">キャンセルの決まりを確認しました</label></div>"+
-   "<div class='err' id='fErr'></div><button class='btn main' id='fSend' onclick='send()' disabled>この内容で予約する</button><button class='btn ghost' onclick='closeForm()'>やめる</button>";
+   "<div class='err' id='fErr'></div><button class='btn main' id='fSend' onclick='confirmForm()' disabled>入力内容を確認する</button><button class='btn ghost' onclick='closeForm()'>やめる</button>"+
+   "</div><div id='fConfirm' style='display:none'></div>";   // 確認画面（2026/10/29）。送信はそこから
   document.getElementById("sheet").classList.add("on");
+}
+/* 入力内容の確認（2026/10/29）：今ある入力チェックを通ったら、送らずに確認画面を出す。入力画面は隠すだけ（「直す」で値が残る）。メールは目立たせる（他人に届く事故を減らす） */
+function checkForm(){
+  var n=document.getElementById("fName").value.trim(),t=document.getElementById("fTel").value.trim(),ml=document.getElementById("fMail").value.trim(),e=document.getElementById("fErr");
+  if(!n){e.textContent="お名前を入れてください";return null}
+  if(!/^[0-9\-]{10,13}$/.test(t)){e.textContent="電話番号を数字で入れてください";return null}
+  if(!ml){e.textContent="メールアドレスを入れてください（確認メールをお送りします）";return null}
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ml)){e.textContent="メールアドレスの形を確かめてください";return null}
+  e.textContent="";return {n:n,t:t,ml:ml};
+}
+function confirmForm(){
+  var v=checkForm();if(!v||!cur)return;
+  var ms=cur.m.map(function(i){return SHOP.menus[i]});
+  document.getElementById("fConfirm").innerHTML=
+   "<div class='cf-h'>入力内容の確認</div><p class='cf-note'>まだ送信していません。内容を確かめてください。</p>"+
+   "<div class='selbox'>"+jp(cur.k)+"　"+cur.t+"〜<br><span style='font-weight:normal;font-size:13px'>"+sumHtml(ms)+"</span></div>"+
+   "<div class='cf-row'><span class='cf-k'>お名前</span><span class='cf-v'>"+esc(v.n)+" 様</span></div>"+
+   "<div class='cf-row'><span class='cf-k'>電話番号</span><span class='cf-v'>"+esc(v.t)+"</span></div>"+
+   "<div class='cf-mail'><span class='cf-k'>メールアドレス</span><span class='cf-v'>"+esc(v.ml)+"</span><span class='cf-m'>このアドレスに確認メールをお送りします。</span></div>"+
+   "<div class='err' id='cErr'></div><button class='btn main' id='cSend' onclick='send()'>この内容で予約する</button><button class='btn ghost' id='cFix' onclick='fixForm()'>直す</button>";
+  document.getElementById("fForm").style.display="none";
+  var box=document.getElementById("fConfirm");box.style.display="block";
+  document.getElementById("sheetBox").scrollTop=0;   // 先頭へ
+  try{document.getElementById("cSend").focus()}catch(x){}
+}
+function fixForm(){
+  document.getElementById("fConfirm").style.display="none";
+  document.getElementById("fForm").style.display="block";
+  var f=document.getElementById("fName");try{f.focus();f.scrollIntoView()}catch(x){}   // 入力欄に戻す（値はそのまま）
 }
 function closeForm(){document.getElementById("sheet").classList.remove("on");cur=null}
 document.getElementById("sheet").onclick=function(e){if(e.target.id=="sheet")closeForm()};
 
-function send(){
-  var n=document.getElementById("fName").value.trim(),t=document.getElementById("fTel").value.trim(),ml=document.getElementById("fMail").value.trim(),e=document.getElementById("fErr");
-  if(!n){e.textContent="お名前を入れてください";return}
-  if(!/^[0-9\-]{10,13}$/.test(t)){e.textContent="電話番号を数字で入れてください";return}
-  if(!ml){e.textContent="メールアドレスを入れてください（確認メールをお送りします）";return}
-  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ml)){e.textContent="メールアドレスの形を確かめてください";return}
-  var ms=cur.m.map(function(i){return SHOP.menus[i]}), c=cur, btn=document.getElementById("fSend");
+function send(){   // 確認画面の「この内容で予約する」から（2026/10/29）。値は隠した入力欄から読み直す（チェックももう一度）
+  var v=checkForm();if(!v||!cur)return;
+  var n=v.n,t=v.t,ml=v.ml,e=document.getElementById("cErr")||document.getElementById("fErr");
+  var ms=cur.m.map(function(i){return SHOP.menus[i]}), c=cur, btn=document.getElementById("cSend");
+  if(btn.disabled)return;   // 二重送信を止める
   btn.disabled=true;btn.textContent="送っています…";e.textContent="";
   var body={date:c.k,start:c.t,menus:ms.map(function(m){return m.name}),name:n,tel:t,email:ml};   // 枠の長さ・料金はサーバーがメニューから決める（menus＝名前の並び。1 つでも配列。2026/10/28）   // サーバーが枠を取り、メールを送る（名前・電話・メールはお店の画面用に預かり、来店日の翌日に空になる）
   fetch("/api/book",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
