@@ -148,7 +148,7 @@ var DOW=["日","月","火","水","木","金","土"];
 var todayKey="", nowMin=0, cutoff=120, open=true;
 var hours={};         // "YYYY-MM-DD" -> {s,e}
 var busy={};          // "YYYY-MM-DD" -> [{s,e}]（埋まっている時間。中身は見えない）
-var menuSel=[0], cur=null, daySel="";   // menuSel＝選んでいるメニューの番号の並び（複数可。1 つは必ず残す。2026/10/28）。daySel＝選んでいる日（横並びの日付）
+var menuSel=[0], cur=null, daySel="", sending=false;   // sending＝送信中（二重送信・送信中の「直す」「やめる」を止める。2026/10/29）   // menuSel＝選んでいるメニューの番号の並び（複数可。1 つは必ず残す。2026/10/28）。daySel＝選んでいる日（横並びの日付）
 
 function parse(k){var a=k.split("-");return new Date(+a[0],+a[1]-1,+a[2])}
 function jp(k){var d=parse(k);return (d.getMonth()+1)+"月"+d.getDate()+"日（"+DOW[d.getDay()]+"）"}
@@ -280,41 +280,46 @@ function checkForm(){
   e.textContent="";return {n:n,t:t,ml:ml};
 }
 function confirmForm(){
+  if(sending)return;
   var v=checkForm();if(!v||!cur)return;
   var ms=cur.m.map(function(i){return SHOP.menus[i]});
   document.getElementById("fConfirm").innerHTML=
-   "<div class='cf-h'>入力内容の確認</div><p class='cf-note'>まだ送信していません。内容を確かめてください。</p>"+
+   "<div class='cf-h' id='cfH' tabindex='-1'>入力内容の確認</div><p class='cf-note'>まだ送信していません。内容を確かめてください。</p>"+
    "<div class='selbox'>"+jp(cur.k)+"　"+cur.t+"〜<br><span style='font-weight:normal;font-size:13px'>"+sumHtml(ms)+"</span></div>"+
    "<div class='cf-row'><span class='cf-k'>お名前</span><span class='cf-v'>"+esc(v.n)+" 様</span></div>"+
    "<div class='cf-row'><span class='cf-k'>電話番号</span><span class='cf-v'>"+esc(v.t)+"</span></div>"+
    "<div class='cf-mail'><span class='cf-k'>メールアドレス</span><span class='cf-v'>"+esc(v.ml)+"</span><span class='cf-m'>このアドレスに確認メールをお送りします。</span></div>"+
-   "<div class='err' id='cErr'></div><button class='btn main' id='cSend' onclick='send()'>この内容で予約する</button><button class='btn ghost' id='cFix' onclick='fixForm()'>直す</button>";
+   "<div class='err' id='cErr'></div><button class='btn main' id='cSend' onclick='send()'>この内容で予約する</button><button class='btn ghost' id='cFix' onclick='fixForm()'>直す</button><button class='btn ghost' id='cCancel' onclick='closeForm()'>やめる</button>";
   document.getElementById("fForm").style.display="none";
   var box=document.getElementById("fConfirm");box.style.display="block";
   document.getElementById("sheetBox").scrollTop=0;   // 先頭へ
-  try{document.getElementById("cSend").focus()}catch(x){}
+  try{document.getElementById("cfH").focus()}catch(x){}   // 見出しにフォーカス（送信ボタンに当てると下へ戻ってしまうため）
 }
+function cBtns(on){var ids=["cFix","cCancel"];for(var i=0;i<ids.length;i++){var b=document.getElementById(ids[i]);if(b)b.disabled=!on}}   // 送信中は「直す」「やめる」も押せなく
 function fixForm(){
+  if(sending)return;
   document.getElementById("fConfirm").style.display="none";
   document.getElementById("fForm").style.display="block";
   var f=document.getElementById("fName");try{f.focus();f.scrollIntoView()}catch(x){}   // 入力欄に戻す（値はそのまま）
 }
-function closeForm(){document.getElementById("sheet").classList.remove("on");cur=null}
+function closeForm(){if(sending)return;document.getElementById("sheet").classList.remove("on");cur=null}
 document.getElementById("sheet").onclick=function(e){if(e.target.id=="sheet")closeForm()};
 
 function send(){   // 確認画面の「この内容で予約する」から（2026/10/29）。値は隠した入力欄から読み直す（チェックももう一度）
   var v=checkForm();if(!v||!cur)return;
   var n=v.n,t=v.t,ml=v.ml,e=document.getElementById("cErr")||document.getElementById("fErr");
   var ms=cur.m.map(function(i){return SHOP.menus[i]}), c=cur, btn=document.getElementById("cSend");
-  if(btn.disabled)return;   // 二重送信を止める
-  btn.disabled=true;btn.textContent="送っています…";e.textContent="";
+  if(sending||!btn||btn.disabled)return;   // 二重送信を止める
+  sending=true;btn.disabled=true;btn.textContent="送っています…";e.textContent="";cBtns(false);
+  function back(){sending=false;btn.disabled=false;btn.textContent="この内容で予約する";cBtns(true)}
   var body={date:c.k,start:c.t,menus:ms.map(function(m){return m.name}),name:n,tel:t,email:ml};   // 枠の長さ・料金はサーバーがメニューから決める（menus＝名前の並び。1 つでも配列。2026/10/28）   // サーバーが枠を取り、メールを送る（名前・電話・メールはお店の画面用に預かり、来店日の翌日に空になる）
   fetch("/api/book",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
   .then(function(r){return r.json().then(function(j){return {status:r.status,body:j}})})
   .then(function(res){
-    if(res.status==409){e.textContent="すみません、たった今ほかの方の予約が入りました。別の時間をお選びください。";btn.disabled=false;btn.textContent="この内容で予約する";load();return}
-    if(res.status==502){e.innerHTML="<div class='warn'>"+esc((res.body&&res.body.error)||"ご予約を完了できませんでした。お手数ですが LINE かお電話でご連絡ください")+"</div>";btn.disabled=false;btn.textContent="この内容で予約する";load();return}
-    if(res.status!=200){e.textContent=(res.body&&res.body.error)||"予約できませんでした。もう一度お試しください。";btn.disabled=false;btn.textContent="この内容で予約する";return}
+    if(res.status==409){e.textContent="すみません、たった今ほかの方の予約が入りました。別の時間をお選びください。";back();load();return}
+    if(res.status==502){e.innerHTML="<div class='warn'>"+esc((res.body&&res.body.error)||"ご予約を完了できませんでした。お手数ですが LINE かお電話でご連絡ください")+"</div>";back();load();return}
+    if(res.status!=200){e.textContent=(res.body&&res.body.error)||"予約できませんでした。もう一度お試しください。";back();return}
+    sending=false;
     var when=jp(c.k)+" "+c.t+"〜";
     var h="<div class='thanks'><div class='big'>✓</div><div class='h'>ご予約を受け付けました</div><p class='note'>"+esc(when)+"<br>"+esc(namesOf(ms))+(ms.length>1?"<br>施術 合計"+minOf(ms)+"分・所要 約"+lenOf(ms)+"分":"")+"</p>";
     // 場所（住所・駐車場・地図・電話）。値があるものだけ（shop.jsonc）
@@ -339,7 +344,7 @@ function send(){   // 確認画面の「この内容で予約する」から（2
     document.getElementById("sheetBox").innerHTML=h+"<button class='btn main' onclick='closeForm()'>とじる</button></div>";
     load();
   })
-  .catch(function(){e.textContent="通信に失敗しました。もう一度お試しください。";btn.disabled=false;btn.textContent="この内容で予約する"});
+  .catch(function(){e.textContent="通信に失敗しました。もう一度お試しください。";back()});
 }
 
 fetch("/shop.jsonc",{cache:"no-store"}).then(function(r){return r.text()}).then(function(t){SHOP=parseJsonc(t);applyShop();renderCust();return load()})
