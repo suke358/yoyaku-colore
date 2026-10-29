@@ -68,6 +68,14 @@ input[type=text],input[type=password],select{width:100%;font-size:16px;padding:1
 .ti.stop{background:var(--stop);border:1px solid var(--stop);color:#fff}   /* 予約停止（濃い灰色・白い文字）*/
 .ti button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 9px;font-size:12px;white-space:nowrap;color:var(--ink)}
 .ti.stop button{border-color:#fff;color:var(--stop)}
+.ti.asking{flex-wrap:wrap}
+.askc{flex-basis:100%;margin-top:8px;padding:9px 10px;background:#fff;border:1.5px solid #d33;border-radius:10px}   /* 取り消しの確認（2026/10/29）。押し間違い防止 */
+.askc b{display:block;font-size:14px;color:#a11}
+.askc small{display:block;font-size:12px;color:var(--mute);margin-top:2px}
+.askc .ab{margin-top:8px}
+.askc .ab button{font-size:14px;padding:9px 12px;margin-right:8px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink)}
+.askc .ab button.yes{background:#d33;border-color:#d33;color:#fff;font-weight:bold}
+.askc .ab button:disabled{opacity:.5}
 .ti .nm{font-weight:bold;font-size:15px}
 .ti .tm{margin-left:8px;font-size:13px}
 .tag{display:inline-block;font-size:11px;line-height:1.5;border-radius:6px;padding:0 6px;margin-right:5px;vertical-align:middle;border:1px solid var(--text-accent)}
@@ -284,7 +292,7 @@ function renderDay(){
     }
     h+="<div class='ti "+(net?"net":"man")+"'><span><span class='nm'>"+esc(nm)+"</span><span class='tm'>"+esc(x.s)+"〜"+esc(x.e)+"</span>"+(x.mailng?"<span class='mlng'>メール未送</span>":"")+"<br>"+
        "<span class='tag "+(net?"net":"man")+"'>"+(net?"ネット":"LINE・電話")+"</span>"+esc(x.menu||"")+"<small style='color:var(--mute)'>（カウンセリング・お片づけを含む）</small>"+
-       (ct?"<span class='ct'>"+ct+"</span>":"")+"</span><button onclick=\"unblock('"+esc(x.id)+"')\">予約を取り消す</button></div>";
+       (ct?"<span class='ct'>"+ct+"</span>":"")+"</span><button id='cb_"+esc(x.id)+"' onclick=\"askCancel('"+esc(x.id)+"')\">予約を取り消す</button></div>";
   });
   h+="</div>";
   // この日の営業時間を変える（折りたたみ）
@@ -327,7 +335,29 @@ function blockFree(){var s=document.getElementById("bS").value,e=document.getEle
   addBlock(s,t2(m2(e)+buf),s+"〜"+e+" の予約を入れました","")}
 function block(mn,name){var s=document.getElementById("bS").value;var mm=null;SHOP.menus.forEach(function(x){if(x.name==name)mm=x});var len=mm?slotOf(mm):PRE()+mn+POST();
   addBlock(s,t2(m2(s)+len),s+" から "+(name?name+" ":"")+len+"分（カウンセリング・お片づけを含む）の予約を入れました",name)}
-function unblock(id,msg){api("block","DELETE",{id:id}).then(function(){toast(msg||"あけました（HP でまた予約できます）");return reload()}).catch(function(e){toast(e.message)})}
+/* 予約の取り消しの確認（2026/10/29）：押してすぐは消さない。行の中に「本当に取り消す／やめる」を出す。予約停止をやめる（stop）は今のまま */
+function askCancel(id){
+  var b=document.getElementById("cb_"+id);if(!b)return;
+  var row=b.parentNode;
+  if(row.className.indexOf("asking")<0)row.className+=" asking";
+  b.style.display="none";
+  var a=document.getElementById("ca_"+id);
+  if(!a){a=document.createElement("div");a.id="ca_"+id;a.className="askc";row.appendChild(a)}
+  a.innerHTML="<b>この予約を取り消します。よろしいですか？</b><small>取り消すと、HP でまた予約できる状態にもどります。</small>"+
+    "<div class='ab'><button class='yes' onclick=\"doCancel('"+esc(id)+"')\">本当に取り消す</button><button class='no' onclick=\"noCancel('"+esc(id)+"')\">やめる</button></div>";
+  try{a.getElementsByTagName("button")[1].focus()}catch(x){}   // 初めに「やめる」にフォーカス（うっかり Enter でも消えない）
+}
+function noCancel(id){
+  var a=document.getElementById("ca_"+id),b=document.getElementById("cb_"+id);
+  if(a&&a.parentNode){a.parentNode.className=a.parentNode.className.replace(" asking","");a.parentNode.removeChild(a)}
+  if(b){b.style.display="";try{b.focus()}catch(x){}}
+}
+function doCancel(id){
+  var a=document.getElementById("ca_"+id),bs=a?a.getElementsByTagName("button"):[];
+  for(var i=0;i<bs.length;i++)bs[i].disabled=true;   // 二重に押せない
+  unblock(id).then(function(){for(var j=0;j<bs.length;j++)bs[j].disabled=false});   // うまくいけば画面ごと更新される。失敗したら押し直せる
+}
+function unblock(id,msg){return api("block","DELETE",{id:id}).then(function(){toast(msg||"あけました（HP でまた予約できます）");return reload()}).catch(function(e){toast(e.message)})}
 
 /* 予約の型（お店が変えられる） */
 var lens=[];for(var L=10;L<=240;L+=10)lens.push(L);
