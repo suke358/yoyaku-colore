@@ -7,7 +7,9 @@
 <meta name="format-detection" content="email=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="予約を見る">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="/icon-miru-180.png">
+<link rel="icon" href="/icon-miru-180.png">
+<link rel="manifest" href="/miru.webmanifest">
 <title>予約を見る</title>
 <!--
   見る専用の画面（2026/11/01）。Lift-Off の担当者が、お店の予約を「見るだけ」にするための画面。
@@ -36,6 +38,24 @@ input[type=password]{width:100%;font-size:16px;padding:11px 12px;border:1px soli
 .kazu div{-webkit-box-flex:1;-webkit-flex:1;flex:1;margin:0 4px;background:#fff;border-radius:12px;padding:10px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 .kazu b{display:block;font-size:24px;line-height:1.2}
 .kazu small{font-size:11.5px;color:var(--mute)}
+.kal{background:#fff;border-radius:14px;padding:10px 10px 12px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.kal-head{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-pack:justify;-webkit-justify-content:space-between;justify-content:space-between;-webkit-box-align:center;-webkit-align-items:center;align-items:center;margin-bottom:6px}
+.kal-head b{font-size:16px}
+.kal-head button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:6px 12px;font-size:14px;min-height:36px}
+.kal table{width:100%;border-collapse:collapse;table-layout:fixed}
+.kal th{font-size:11.5px;color:var(--mute);font-weight:normal;padding:2px 0}
+.kal th.w0{color:#c0392b}.kal th.w6{color:#2d5d9f}
+.kal td{padding:2px}
+.kal td button{width:100%;border:1px solid transparent;background:none;border-radius:9px;padding:4px 0 3px;line-height:1.2;min-height:46px}
+.kal td button b{display:block;font-size:15px;font-weight:600}
+.kal td button small{display:block;font-size:10.5px;color:var(--mute);height:13px}
+.kal td button.ari{background:var(--ao)}
+.kal td button.ari small{color:var(--aomoji);font-weight:bold}
+.kal td button.yasumi b{color:#b9ada3}
+.kal td button.kyou b{text-decoration:underline}
+.kal td button.ima{border:2px solid var(--ink)}
+.kal td.w0 b{color:#c0392b}.kal td.w6 b{color:#2d5d9f}
+.kal td.soto button{visibility:hidden}
 .hi-retsu{display:-webkit-box;display:-webkit-flex;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -16px 12px;padding:2px 16px 6px}
 .hi{-webkit-flex-shrink:0;flex-shrink:0;width:56px;margin-right:6px;text-align:center;border:1px solid var(--line);border-radius:10px;background:#fff;padding:5px 2px;line-height:1.3}
 .hi b{display:block;font-size:18px}
@@ -65,7 +85,7 @@ a{color:var(--aomoji)}
 <script>
 var PW_KEY = "miru_pw";
 var WD = ["日","月","火","水","木","金","土"];
-var data = null, sel = "";
+var data = null, sel = "", tsuki = "";   // tsuki＝カレンダーで見ている月（YYYY-MM）
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]})}
 function getPw(){try{return localStorage.getItem(PW_KEY)||""}catch(e){return ""}}
 function setPw(v){try{if(v)localStorage.setItem(PW_KEY,v);else localStorage.removeItem(PW_KEY)}catch(e){}}
@@ -94,7 +114,7 @@ function showLogin(msg){
   };
 }
 function load(){
-  api("all","GET").then(function(j){data=j;if(!sel)sel=j.today;draw()}).catch(function(e){
+  api("all","GET").then(function(j){data=j;if(!sel)sel=j.today;if(!tsuki)tsuki=sel.slice(0,7);draw()}).catch(function(e){
     if(/パスワード|合言葉/.test(e.message)){setPw("");showLogin(e.message)}
     else document.getElementById("app").innerHTML="<div class='card'><p>"+esc(e.message)+"</p><button class='btn ghost' onclick='load()'>もう一度</button></div>";
   });
@@ -108,12 +128,20 @@ function draw(){
   for(var i=0;i<30;i++){var d=addDays(today,i);var c=yoyaku(d).length;if(i<7)n7+=c;n30+=c}
   var h="<div class='kazu'><div><b>"+n0+"</b><small>今日</small></div><div><b>"+n7+"</b><small>7日間</small></div><div><b>"+n30+"</b><small>30日間</small></div></div>"+
     "<p class='note' style='text-align:right;margin:6px 0 10px'>"+esc(data.today)+" 時点 ・ <a href='javascript:load()'>読み直す</a></p>";
-  h+="<div class='hi-retsu'>";
-  for(var k=-1;k<30;k++){
-    var dd=addDays(today,k),cnt=yoyaku(dd).length,op=hours[dd];
-    h+="<button class='hi w"+wd(dd)+(dd==sel?" ima":"")+(op?"":" yasumi")+"' onclick=\"pick('"+dd+"')\"><small>"+(dd==today?"今日":(+dd.split("-")[1])+"月")+"</small><b>"+(+dd.split("-")[2])+"</b><small>"+WD[wd(dd)]+" "+(op?(cnt?"<span class='n'>"+cnt+"件</span>":"0件"):"休")+"</small></button>";
+  // 月のカレンダー（押すと、その日の予約が下に出る）
+  var y=+tsuki.slice(0,4), mo=+tsuki.slice(5,7);
+  var first=new Date(y,mo-1,1), last=new Date(y,mo,0).getDate();
+  h+="<div class='kal'><div class='kal-head'><button onclick='tsukiIdou(-1)' aria-label='前の月'>‹ 前の月</button><b>"+y+"年"+mo+"月</b><button onclick='tsukiIdou(1)' aria-label='次の月'>次の月 ›</button></div>"+
+    "<table><tr>"+WD.map(function(w,i){return "<th class='w"+i+"'>"+w+"</th>"}).join("")+"</tr><tr>";
+  var col=0;
+  for(var e=0;e<first.getDay();e++){h+="<td class='soto'><button></button></td>";col++}
+  for(var dn=1;dn<=last;dn++){
+    var dd=tsuki+"-"+("0"+dn).slice(-2), cnt=yoyaku(dd).length, op=hours[dd];
+    h+="<td class='w"+(col%7)+"'><button class='"+(cnt?"ari ":"")+(op?"":"yasumi ")+(dd==today?"kyou ":"")+(dd==sel?"ima":"")+"' onclick=\"pick('"+dd+"')\"><b>"+dn+"</b><small>"+(cnt?cnt+"件":(op?"":"休"))+"</small></button></td>";
+    col++; if(col%7==0&&dn<last)h+="</tr><tr>";
   }
-  h+="</div>";
+  while(col%7!=0){h+="<td class='soto'><button></button></td>";col++}
+  h+="</tr></table><p class='note' style='margin:6px 2px 0'>青い日＝予約あり（数は件数）・「休」＝営業時間なし ・ <a href='javascript:kyouHe()'>今日へ</a></p></div>";
   var op2=hours[sel], list=(by[sel]||[]).slice().sort(function(a,b){return a.s<b.s?-1:1});
   h+="<div class='card'><div class='hiduke'><h2>"+hiduke(sel)+"</h2><span class='eigyo'>"+(op2?"営業 "+esc(op2.s)+"〜"+esc(op2.e):"お休み")+"</span></div>";
   if(!list.length)h+="<p class='kara'>この日の予約はありません</p>";
@@ -129,7 +157,9 @@ function draw(){
   document.getElementById("app").innerHTML=h;
 }
 function pick(d){sel=d;draw()}
-function deru(){setPw("");data=null;sel="";showLogin("")}
+function tsukiIdou(n){var y=+tsuki.slice(0,4),m=+tsuki.slice(5,7)-1+n;var x=new Date(y,m,1);tsuki=x.getFullYear()+"-"+("0"+(x.getMonth()+1)).slice(-2);draw()}
+function kyouHe(){sel=data.today;tsuki=sel.slice(0,7);draw()}
+function deru(){setPw("");data=null;sel="";tsuki="";showLogin("")}
 fetch("/shop.jsonc",{cache:"no-store"}).then(function(r){return r.text()}).then(function(t){
   try{var s=JSON.parse(t.replace(/^\s*\/\/.*$/gm,"").replace(/[ \t]+\/\/[^"\n]*$/gm,""));
     document.getElementById("mise").textContent=s.shopName+" 予約を見る";

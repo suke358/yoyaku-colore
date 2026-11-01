@@ -1,0 +1,9 @@
+{
+  "name": "colore 予約を見る(見る専用)",
+  "short_name": "予約を見る",
+  "start_url": "/miru",
+  "display": "standalone",
+  "background_color": "#f7f2ea",
+  "theme_color": "#334155",
+  "icons": [{ "src": "/icon-miru-180.png", "sizes": "180x180", "type": "image/png" }]
+}
