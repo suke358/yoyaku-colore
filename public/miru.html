@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="format-detection" content="email=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="予約を見る">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>予約を見る</title>
+<!--
+  見る専用の画面（2026/11/01）。Lift-Off の担当者が、お店の予約を「見るだけ」にするための画面。
+  合言葉は secret VIEW_PASSWORD（お店の ADMIN_PASSWORD とは別）。この合言葉では、サーバーが「変える命令」を全部断る（403）。
+  この画面が呼ぶのは POST /api/admin/login と GET /api/admin/all だけ。営業時間・休み・予約を変えるボタンはない。
+  合言葉はブラウザに覚えさせる（localStorage の miru_pw。お店の画面の合言葉とは別の場所）。
+-->
+<style>
+:root{--main:#e58ca0;--ink:#4a3a35;--bg:#f7f2ea;--line:#e8dccf;--mute:#9c8a80;--ao:#e8f0fb;--aowaku:#9ab6e0;--aomoji:#1f4e8c;--hai:#4b5563;color-scheme:light}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;font-size:15px;line-height:1.6;word-break:keep-all;overflow-wrap:anywhere}
+button{font:inherit;cursor:pointer;color:inherit}
+.top{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;text-align:center}
+.top b{display:block;font-size:15px}
+.top small{font-size:12px;color:var(--mute)}
+.miru{display:inline-block;background:#4b5563;color:#fff;font-size:11px;border-radius:10px;padding:0 8px;margin-left:4px;vertical-align:1px}
+main{max-width:560px;margin:0 auto;padding:14px 16px 60px}
+.card{background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.note{font-size:12.5px;color:#7d6a62}
+input[type=password]{width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+.btn{display:block;width:100%;border:0;border-radius:12px;padding:13px;font-size:16px;font-weight:bold;margin-top:12px;background:var(--main);color:#fff}
+.btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink);font-weight:normal;font-size:14px;padding:9px}
+.err{font-weight:bold;font-size:13px;min-height:18px;margin-top:6px}
+.kazu{display:-webkit-box;display:-webkit-flex;display:flex;margin:0 -4px}
+.kazu div{-webkit-box-flex:1;-webkit-flex:1;flex:1;margin:0 4px;background:#fff;border-radius:12px;padding:10px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.kazu b{display:block;font-size:24px;line-height:1.2}
+.kazu small{font-size:11.5px;color:var(--mute)}
+.hi-retsu{display:-webkit-box;display:-webkit-flex;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -16px 12px;padding:2px 16px 6px}
+.hi{-webkit-flex-shrink:0;flex-shrink:0;width:56px;margin-right:6px;text-align:center;border:1px solid var(--line);border-radius:10px;background:#fff;padding:5px 2px;line-height:1.3}
+.hi b{display:block;font-size:18px}
+.hi small{display:block;font-size:11px;color:var(--mute)}
+.hi.ima{border:2px solid var(--ink);padding:4px 1px}
+.hi.yasumi{background:#efe9e2}
+.hi.w0 b{color:#c0392b}.hi.w6 b{color:#2d5d9f}
+.hi .n{color:var(--aomoji);font-weight:bold}
+.hiduke{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-pack:justify;-webkit-justify-content:space-between;justify-content:space-between;-webkit-box-align:baseline;-webkit-align-items:baseline;align-items:baseline;margin-bottom:8px}
+.hiduke h2{font-size:17px;margin:0}
+.eigyo{font-size:12.5px;color:var(--mute)}
+.ti{border-radius:10px;padding:9px 12px;margin-bottom:8px;background:var(--ao);border:1px solid var(--aowaku)}
+.ti .tm{font-weight:bold;margin-right:6px}
+.ti .nm{font-weight:bold}
+.ti .sub{font-size:13px;color:#5d4d46;margin-top:2px}
+.ti.stop{background:#f1f1f1;border-color:#d1d5db;color:var(--hai)}
+.tag{display:inline-block;font-size:11px;border-radius:9px;padding:0 7px;margin-right:4px;border:1px solid var(--aowaku);color:var(--aomoji);background:#fff}
+.tag.net{background:var(--aomoji);color:#fff;border-color:var(--aomoji)}
+.mlng{display:inline-block;font-size:11px;border-radius:9px;padding:0 7px;margin-left:4px;background:#fff3cd;color:#7a5200}
+.kara{color:var(--mute);text-align:center;padding:14px 0}
+a{color:var(--aomoji)}
+</style>
+</head>
+<body>
+<div class="top"><b id="mise">予約を見る</b><small>予約を見るだけの画面<span class="miru">見る専用</span></small></div>
+<main id="app"><p class="note">読み込み中…</p></main>
+<script>
+var PW_KEY = "miru_pw";
+var WD = ["日","月","火","水","木","金","土"];
+var data = null, sel = "";
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]})}
+function getPw(){try{return localStorage.getItem(PW_KEY)||""}catch(e){return ""}}
+function setPw(v){try{if(v)localStorage.setItem(PW_KEY,v);else localStorage.removeItem(PW_KEY)}catch(e){}}
+// この画面が使う API はこの 2 つだけ（login と all）。変える命令は書かない
+function api(path,method){
+  return fetch("/api/admin/"+path,{method:method,headers:{"content-type":"application/json","X-Admin-Password":getPw()},body:method=="POST"?"{}":undefined,cache:"no-store"})
+    .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||("エラー "+r.status));return j})});
+}
+function addDays(d,n){var a=d.split("-");var x=new Date(+a[0],+a[1]-1,+a[2]+n);return x.getFullYear()+"-"+("0"+(x.getMonth()+1)).slice(-2)+"-"+("0"+x.getDate()).slice(-2)}
+function wd(d){var a=d.split("-");return new Date(+a[0],+a[1]-1,+a[2]).getDay()}
+function hiduke(d){var a=d.split("-");return (+a[1])+"月"+(+a[2])+"日("+WD[wd(d)]+")"}
+
+function showLogin(msg){
+  document.getElementById("app").innerHTML=
+    "<div class='card'><p>予約を<b>見るだけ</b>の画面です。見る用の合言葉を入れてください。</p>"+
+    "<input type='password' id='pw' autocomplete='current-password' placeholder='見る用の合言葉'>"+
+    "<div class='err' id='err'>"+esc(msg||"")+"</div><button class='btn' id='go'>入る</button>"+
+    "<p class='note'>この画面では、営業時間・休み・予約を変えることはできません。</p></div>";
+  document.getElementById("go").onclick=function(){
+    var v=document.getElementById("pw").value;if(!v)return;
+    setPw(v);
+    api("login","POST").then(function(j){
+      if(j.role!=="miru"){setPw("");showLogin("これはお店の合言葉です。この画面には、見る用の合言葉で入ってください");return}
+      load();
+    }).catch(function(e){setPw("");showLogin(e.message)});
+  };
+}
+function load(){
+  api("all","GET").then(function(j){data=j;if(!sel)sel=j.today;draw()}).catch(function(e){
+    if(/パスワード|合言葉/.test(e.message)){setPw("");showLogin(e.message)}
+    else document.getElementById("app").innerHTML="<div class='card'><p>"+esc(e.message)+"</p><button class='btn ghost' onclick='load()'>もう一度</button></div>";
+  });
+}
+function draw(){
+  var today=data.today, hours={}, by={};
+  (data.hours||[]).forEach(function(h){hours[h.date]=h});
+  (data.blocks||[]).forEach(function(b){(by[b.date]=by[b.date]||[]).push(b)});
+  function yoyaku(d){return (by[d]||[]).filter(function(b){return b.kind!="stop"})}
+  var n0=yoyaku(today).length,n7=0,n30=0;
+  for(var i=0;i<30;i++){var d=addDays(today,i);var c=yoyaku(d).length;if(i<7)n7+=c;n30+=c}
+  var h="<div class='kazu'><div><b>"+n0+"</b><small>今日</small></div><div><b>"+n7+"</b><small>7日間</small></div><div><b>"+n30+"</b><small>30日間</small></div></div>"+
+    "<p class='note' style='text-align:right;margin:6px 0 10px'>"+esc(data.today)+" 時点 ・ <a href='javascript:load()'>読み直す</a></p>";
+  h+="<div class='hi-retsu'>";
+  for(var k=-1;k<30;k++){
+    var dd=addDays(today,k),cnt=yoyaku(dd).length,op=hours[dd];
+    h+="<button class='hi w"+wd(dd)+(dd==sel?" ima":"")+(op?"":" yasumi")+"' onclick=\"pick('"+dd+"')\"><small>"+(dd==today?"今日":(+dd.split("-")[1])+"月")+"</small><b>"+(+dd.split("-")[2])+"</b><small>"+WD[wd(dd)]+" "+(op?(cnt?"<span class='n'>"+cnt+"件</span>":"0件"):"休")+"</small></button>";
+  }
+  h+="</div>";
+  var op2=hours[sel], list=(by[sel]||[]).slice().sort(function(a,b){return a.s<b.s?-1:1});
+  h+="<div class='card'><div class='hiduke'><h2>"+hiduke(sel)+"</h2><span class='eigyo'>"+(op2?"営業 "+esc(op2.s)+"〜"+esc(op2.e):"お休み")+"</span></div>";
+  if(!list.length)h+="<p class='kara'>この日の予約はありません</p>";
+  list.forEach(function(x){
+    if(x.kind=="stop"){h+="<div class='ti stop'><span class='tm'>"+esc(x.s)+"〜"+esc(x.e)+"</span>予約停止</div>";return}
+    var net=x.kind=="net";
+    h+="<div class='ti'><span class='tm'>"+esc(x.s)+"〜"+esc(x.e)+"</span><span class='nm'>"+esc(x.name||(net?"（お名前なし）":"LINE・電話の予約"))+"</span>"+(x.mailng?"<span class='mlng'>メール未送</span>":"")+
+      "<div class='sub'><span class='tag"+(net?" net":"")+"'>"+(net?"ネット":"LINE・電話")+"</span>"+esc(x.menu||"")+"</div>"+
+      (x.tel||x.email?"<div class='sub'>"+(x.tel?"電話 <a href='tel:"+esc(x.tel)+"'>"+esc(x.tel)+"</a> ":"")+(x.email?"メール "+esc(x.email):"")+"</div>":"")+"</div>";
+  });
+  h+="</div><p class='note'>来店日の翌日には、名前・電話・メールが自動で消えます(お店の決まり)。</p>"+
+    "<button class='btn ghost' onclick='deru()'>この端末から出る(合言葉を忘れさせる)</button>";
+  document.getElementById("app").innerHTML=h;
+}
+function pick(d){sel=d;draw()}
+function deru(){setPw("");data=null;sel="";showLogin("")}
+fetch("/shop.jsonc",{cache:"no-store"}).then(function(r){return r.text()}).then(function(t){
+  try{var s=JSON.parse(t.replace(/^\s*\/\/.*$/gm,"").replace(/[ \t]+\/\/[^"\n]*$/gm,""));
+    document.getElementById("mise").textContent=s.shopName+" 予約を見る";
+    if(s.color&&s.color.main)document.documentElement.style.setProperty("--main",s.color.main);}catch(e){}
+}).catch(function(){});
+if(getPw())load();else showLogin("");
+</script>
+</body>
+</html>
