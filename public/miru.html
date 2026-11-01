@@ -51,6 +51,7 @@ input[type=password]{width:100%;font-size:16px;padding:11px 12px;border:1px soli
 .kal td button small{display:block;font-size:10.5px;color:var(--mute);height:13px}
 .kal td button.ari{background:var(--ao)}
 .kal td button.ari small{color:var(--aomoji);font-weight:bold}
+.kal .poti{color:var(--aomoji);font-size:12px;margin-right:1px}   /* ネット予約がある日の青いポチ（お店の画面と同じ）*/
 .kal td button.yasumi b{color:#b9ada3}
 .kal td button.kyou b{text-decoration:underline}
 .kal td button.ima{border:2px solid var(--ink)}
@@ -136,12 +137,12 @@ function draw(){
   var col=0;
   for(var e=0;e<first.getDay();e++){h+="<td class='soto'><button></button></td>";col++}
   for(var dn=1;dn<=last;dn++){
-    var dd=tsuki+"-"+("0"+dn).slice(-2), cnt=yoyaku(dd).length, op=hours[dd];
-    h+="<td class='w"+(col%7)+"'><button class='"+(cnt?"ari ":"")+(op?"":"yasumi ")+(dd==today?"kyou ":"")+(dd==sel?"ima":"")+"' onclick=\"pick('"+dd+"')\"><b>"+dn+"</b><small>"+(cnt?cnt+"件":(op?"":"休"))+"</small></button></td>";
+    var dd=tsuki+"-"+("0"+dn).slice(-2), cnt=yoyaku(dd).length, op=hours[dd], net=(by[dd]||[]).some(function(b){return b.kind=="net"});
+    h+="<td class='w"+(col%7)+"'><button class='"+(cnt?"ari ":"")+(op?"":"yasumi ")+(dd==today?"kyou ":"")+(dd==sel?"ima":"")+"' onclick=\"pick('"+dd+"')\"><b>"+dn+"</b><small>"+(net?"<span class='poti'>●</span>":"")+(cnt?cnt+"件":(op?"":"休"))+"</small></button></td>";
     col++; if(col%7==0&&dn<last)h+="</tr><tr>";
   }
   while(col%7!=0){h+="<td class='soto'><button></button></td>";col++}
-  h+="</tr></table><p class='note' style='margin:6px 2px 0'>青い日＝予約あり（数は件数）・「休」＝営業時間なし ・ <a href='javascript:kyouHe()'>今日へ</a></p></div>";
+  h+="</tr></table><p class='note' style='margin:6px 2px 0'><span class='poti'>●</span>＝ネット予約あり ・ 青い日＝予約あり（数は件数）・「休」＝営業時間なし ・ <a href='javascript:kyouHe()'>今日へ</a></p></div>";
   var op2=hours[sel], list=(by[sel]||[]).slice().sort(function(a,b){return a.s<b.s?-1:1});
   h+="<div class='card'><div class='hiduke'><h2>"+hiduke(sel)+"</h2><span class='eigyo'>"+(op2?"営業 "+esc(op2.s)+"〜"+esc(op2.e):"お休み")+"</span></div>";
   if(!list.length)h+="<p class='kara'>この日の予約はありません</p>";
