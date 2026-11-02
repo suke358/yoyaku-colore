@@ -6,7 +6,8 @@ import shopText from '../public/shop.jsonc?raw';
 import wranglerText from '../wrangler.jsonc?raw';
 
 const SHOP = JSON.parse(shopText.replace(/^\s*\/\/.*$/gm, '').replace(/[ \t]+\/\/[^"\n]*$/gm, ''));
-const ON = { enabled: true, daysBefore: 2, hourJst: 10 };   // テスト用の設定（shop.jsonc の既定は無効）
+const ON = { enabled: true, daysBefore: 2, hourJst: 10 };   // テスト用の設定
+const ON_BY_SHOP = !!(SHOP.reminder && SHOP.reminder.enabled) && !SHOP.demo;   // shop.jsonc で有効か（2026/11/2 colore は有効にした）
 const NOW_UTC = '2027-03-10T01:00:00Z';   // 日本時間 2027-03-10 10:00（Cron の時刻）
 const T2 = '2027-03-12';                   // 今日＋2 日
 const api = (path, init) => SELF.fetch('https://x' + path, init);
@@ -59,8 +60,8 @@ describe('2 日前のお知らせメール（2026/10/28）', () => {
     expect(r.sent).toBe(0); expect(r.reason).toBe('disabled');
     expect(gasCalls).toHaveLength(0);
     expect((await env.BACKUP.list({ prefix: 'reminder:' })).keys).toHaveLength(0);
-    const d = await runReminder(env);   // 引数なし＝shop.jsonc の既定（無効 か デモ）
-    expect(d.sent).toBe(0); expect(['disabled', 'demo']).toContain(d.reason);
+    const d = await runReminder(env);   // 引数なし＝shop.jsonc の設定（colore は 11/2 から有効。無効・デモなら送らない）
+    if (ON_BY_SHOP) { expect(d.sent).toBe(1); } else { expect(d.sent).toBe(0); expect(['disabled', 'demo']).toContain(d.reason); }
   });
   it('今日＋2 日のネット予約（メールあり）に 1 通。手入力（メールなし）・取り消し済み（表にない）・前日・3 日前・同じ日の過去分は送らない', async () => {
     await ins('r1', T2, '10:00', '11:00', 'net', M1.name, 'hana@example.com');     // 対象
@@ -143,21 +144,23 @@ describe('2 日前のお知らせメール（2026/10/28）', () => {
     await ins('r1', T2, '10:00', '11:00', 'net', M1.name, 'hana@example.com');
     const run = async (cron) => { const ctrl = createScheduledController({ scheduledTime: new Date(NOW_UTC), cron }); const ctx = createExecutionContext(); await worker.scheduled(ctrl, env, ctx); await waitOnExecutionContext(ctx); };
     await run('0 1 * * *');
-    // 既定の設定は無効（か デモ）なので送らない。D1 にも何も書かない
-    expect(gasCalls).toHaveLength(0);
-    expect(await env.DB.prepare("SELECT value FROM settings WHERE key = 'reminder_last'").first()).toBeNull();
-    expect((await env.BACKUP.list({ prefix: 'reminder:' })).keys).toHaveLength(0);
+    // shop.jsonc の設定が有効なら 1 通送って記録する。無効（か デモ）なら送らず、D1 にも何も書かない（2026/11/2 colore は有効にした）
+    const n = ON_BY_SHOP ? 1 : 0;
+    expect(gasCalls).toHaveLength(n);
+    const last = await env.DB.prepare("SELECT value FROM settings WHERE key = 'reminder_last'").first();
+    if (ON_BY_SHOP) expect(last).toBeTruthy(); else expect(last).toBeNull();
+    expect((await env.BACKUP.list({ prefix: 'reminder:' })).keys).toHaveLength(n);
     await run('30 19 * * *');
     expect(await env.BACKUP.get('backup:2027-03-10', 'json')).toBeTruthy();   // バックアップは今までどおり
     const bk = await env.BACKUP.get('backup:2027-03-10', 'json');
     expect(bk.settings.map((s) => s.key)).not.toContain('reminder_last');   // 控えに結果の記録は入れない
     await run('15 15 * * *');
-    expect(gasCalls).toHaveLength(0);
+    expect(gasCalls).toHaveLength(n);
     for (const p of ['/api/reminder', '/api/admin/reminder', '/__scheduled']) {
       const r = await api(p, { method: 'POST', headers: { 'X-Admin-Password': 'test-admin-password' } });
       expect([401, 404]).toContain(r.status);
     }
-    expect(gasCalls).toHaveLength(0);
+    expect(gasCalls).toHaveLength(n);
   });
   it('旧版の GAS（action を知らない）に送っても、予約確認メールは出ず（旧版は input エラーで止まる）、印も付かない。ok:true だけの返事（action なし）も失敗扱い（レビュー 10/28）', async () => {
     await ins('r1', T2, '10:00', '11:00', 'net', M1.name, 'hana@example.com');

@@ -132,8 +132,8 @@ details.more summary{cursor:pointer;padding:4px 0}
 <section id="app" style="display:none">
   <div class="hint">お店の人がスマホで使う画面（ホーム画面にアイコンで置けます：共有 → ホーム画面に追加）。</div>
   <div class="card">
-    <div class="mode"><button id="mPat" class="on" onclick="setMode('pat')">営業日を入れる</button><button id="mDay" onclick="setMode('day')">予約を見る・入れる</button></div>
-    <div id="patBox">
+    <div class="mode"><button id="mDay" class="on" onclick="setMode('day')">予約を見る・入れる</button><button id="mPat" onclick="setMode('pat')">営業日を入れる</button></div>
+    <div id="patBox" style="display:none">
       <div class="note" style="margin-bottom:6px">営業時間を選んで、日にちを続けて押してください。（「休み」で消せます）</div>
       <div class="pat" id="pat"></div>
       <div id="patEdit" style="margin-top:8px"></div>
@@ -155,7 +155,7 @@ var PW_KEY="yoyakuAdminPw";
 var DOW=["日","月","火","水","木","金","土"];
 var today=new Date();today.setHours(0,0,0,0);
 var view=new Date(today.getFullYear(),today.getMonth(),1);
-var hours={}, blocks={}, cancels={}, sel=null, mode="pat", pat=0, editPat=false, editB=false;   // cancels＝お客さまが取り消した予約（日付ごと。2026/10/30）
+var hours={}, blocks={}, cancels={}, sel=null, mode="day", pat=0, editPat=false, editB=false;   // cancels＝お客さまが取り消した予約（日付ごと。2026/10/30）
 var PATS=[], BPATS=[];
 
 function key(d){return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2)}
@@ -216,7 +216,7 @@ function reload(){
     PATS=(st.pats&&st.pats.length)?st.pats:SHOP.patterns.map(function(p){return {name:p.name,s:p.s,e:p.e}});
     BPATS=(st.bpats&&st.bpats.length)?st.bpats:SHOP.bookPatterns.map(function(p){return {name:p.name,min:p.min}});
     if(pat>=PATS.length)pat=0;
-    renderAdmin();
+    if(mode=="day"&&!sel)setMode("day");else renderAdmin();   // 開いたら「予約を見る」で、今日から先の最初の営業日を出す（2026/11/2 しほさん：ボタンを反対に）
   }).catch(function(e){toast(e.message)});
 }
 
