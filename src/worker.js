@@ -24,6 +24,9 @@
 //   POST   /api/admin/block  {date,s,e[,menu,kind,name]} LINE・電話の予約（kind man。name は任意。電話・メールは持たない）か 予約停止（kind stop）を入れる（重なったら 409）
 //   DELETE /api/admin/block  {id}                予約を取り消す（あける）
 //   POST   /api/admin/settings {key,value}       型などを保存（value は JSON）
+// 見る専用（2026/11/01）：X-Admin-Password が secret VIEW_PASSWORD（8文字以上・ADMIN_PASSWORD と別）と同じなら「見る人」。
+//   見る人に許すのは POST login と GET all だけ。ほか（営業時間・休み・予約の追加と取り消し・設定）は全部 403。画面は /miru（public/miru.html）
+//   VIEW_PASSWORD を入れていなければ、見る用の合言葉は今までどおり「違う合言葉」として数える
 // GET  /manifest.webmanifest・/apple-touch-icon.png  お店の画面をホーム画面に置くときの名前とアイコン
 // Cron：毎日 4:30 JST バックアップ（runBackup）／毎日 10:00 JST 2 日前のお知らせメール（runReminder。shop.jsonc の reminder.enabled が true のときだけ。2026/10/28）
 
@@ -33,7 +36,7 @@ import shopText from '../public/shop.jsonc';
 /** @typedef {{ name: string, min: number, price?: string, slot?: number, extraMin?: number, extraNote?: string }} ShopMenu */   // extraMin＝複数メニューのとき、このメニューが入ると所要に足す分（例 お化粧落とし 10 分）。extraNote＝その名前（画面・メールの注記）
 /** @typedef {{ shopName: string, shortName?: string, color: { main: string, sub: string }, lineUrl?: string, tel?: string, mail?: string, address?: string, parking?: string, mapUrl?: string, menus: ShopMenu[], preMin?: number, bufferMin?: number, stepMin?: number, cancelPolicy?: string, daysAhead?: number, sameDayCutoffMin?: number, demo?: boolean, taxNote?: string, otherMenusNote?: string, allowOrigins?: string[], maxTotalMin?: number, reminder?: ReminderCfg, cancelDeadlineDays?: number }} Shop */   // cancelDeadlineDays＝お客さんがネットで取り消せるのは来店日の何日前まで（2＝前々日の 23:59 JST まで。2026/10/30）
 /** @typedef {{ enabled?: boolean, daysBefore?: number, hourJst?: number }} ReminderCfg */   // 2 日前のお知らせメール（2026/10/28）
-/** @typedef {{ DB: D1Database, ASSETS: Fetcher, BACKUP?: KVNamespace, GAS_URL?: string, GAS_TOKEN?: string, ADMIN_PASSWORD?: string }} Env */
+/** @typedef {{ DB: D1Database, ASSETS: Fetcher, BACKUP?: KVNamespace, GAS_URL?: string, GAS_TOKEN?: string, ADMIN_PASSWORD?: string, VIEW_PASSWORD?: string }} Env */
 /** @typedef {{ id: string, date: string, s: string, e: string, kind: string, menu: string, created_at: string, name?: string, tel?: string, email?: string, mailng?: number, cancel_token?: string }} Block */
 /** @typedef {{ name: string, tel: string, email: string }} Customer */
 /** @typedef {{ name: string, min: number, price: string }} BookItem */
@@ -575,7 +578,9 @@ async function handleAdmin(request, env, path) {
   var nowIso = new Date().toISOString();
   var fail = /** @type {{ n: number, until: string }|null} */ (await env.DB.prepare('SELECT n, until FROM auth_fail WHERE ip = ?1').bind(ip).first());
   if (fail && fail.until && fail.until > nowIso) return json({ error: LOCK_MSG }, 429);
-  if (pw !== env.ADMIN_PASSWORD) {
+  // だれの合言葉か：お店（全部できる）／見る人（見るだけ。2026/11/01）／どちらでもない
+  var role = pw === env.ADMIN_PASSWORD ? 'mise' : (env.VIEW_PASSWORD && env.VIEW_PASSWORD.length >= 8 && pw === env.VIEW_PASSWORD ? 'miru' : '');
+  if (!role) {
     // 加算は 1 つの命令で（同時に来ても数が飛ばない）。前の止めが切れたあとの間違いは 1 から数え直す。n が 5 以上になった回で止める
     var untilIso = new Date(Date.now() + LOCK_MIN * 60000).toISOString();
     var r = /** @type {{ n: number }} */ (await env.DB.prepare(
@@ -591,7 +596,9 @@ async function handleAdmin(request, env, path) {
   }
   if (fail) await env.DB.prepare('DELETE FROM auth_fail WHERE ip = ?1').bind(ip).run();   // 正しい合言葉で入れたら、その接続元の回数を 0 に
   var m = request.method;
-  if (path === 'login' && m === 'POST') return json({ ok: true });
+  if (path === 'login' && m === 'POST') return json({ ok: true, role: role });
+  // 見る人は、ここから先は「全部を読む」だけ。変える命令はサーバーで断る（画面のボタンを隠すだけにしない）
+  if (role === 'miru' && !(path === 'all' && m === 'GET')) return json({ error: '見る専用の合言葉では、変えることはできません' }, 403);
   if (path === 'all' && m === 'GET') {
     var hours = (await env.DB.prepare('SELECT date, s, e FROM hours ORDER BY date').all()).results;
     var blocks = (await env.DB.prepare('SELECT id, date, s, e, kind, menu, name, tel, email, mailng FROM blocks ORDER BY date, s').all()).results;
