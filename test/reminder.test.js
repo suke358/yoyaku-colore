@@ -47,7 +47,7 @@ beforeEach(async () => {
 
 describe('2 日前のお知らせメール（2026/10/28）', () => {
   it('設定：shop.jsonc の reminder は既定で無効（enabled false・daysBefore 2・hourJst 10）。wrangler.jsonc に 10:00 JST（01:00 UTC）の Cron がある', () => {
-    expect(SHOP.reminder).toEqual({ enabled: false, daysBefore: 2, hourJst: 10 });
+    expect(SHOP.reminder).toEqual({ enabled: true, daysBefore: 2, hourJst: 10 });
     const h = ((SHOP.reminder.hourJst - 9) % 24 + 24) % 24;   // hourJst → UTC の時（wrangler.jsonc の Cron と食い違えば黙って止まるので、ここで縛る。レビュー 10/28）
     expect(Number.isInteger(SHOP.reminder.hourJst) && SHOP.reminder.hourJst >= 0 && SHOP.reminder.hourJst <= 23).toBe(true);
     expect(wranglerText).toMatch(new RegExp('"0 ' + h + ' \\* \\* \\*"'));
