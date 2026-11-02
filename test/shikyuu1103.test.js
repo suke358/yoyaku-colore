@@ -135,6 +135,16 @@ describe('4. お店でネット予約を取り消したら、記録に残して�
     expect((await cancelsAll())[0].by_shop).toBe(0);
   });
 
+  it('過ぎた日のネット予約は、消すだけ（記録・連絡先なし。名前なども空になっているため）', async () => {
+    const a = await book('10:00');
+    vi.setSystemTime(new Date('2027-04-17T01:00:00Z'));   // 来店日の 2 日後
+    const r = await admin('DELETE', 'block', { id: a.id });
+    expect(r.status).toBe(200);
+    expect((await r.json()).net).toBeUndefined();
+    expect(await blocks()).toHaveLength(0);
+    expect(await cancelsAll()).toHaveLength(0);
+  });
+
   it('LINE・電話の予約と予約停止は、今までどおり消すだけ（記録・連絡先なし）', async () => {
     const id1 = await man('10:00', '11:00', '山田'); const id2 = await stop('12:00', '13:00');
     for (const id of [id1, id2]) {
@@ -196,6 +206,14 @@ describe('5. 営業時間を短くする前に、はみ出る予約を知らせ�
   it('終わりのあとの片づけの分（bufferMin）だけ出る予約は、はみ出たと数えない（手入力のときと同じ物差し）', async () => {
     await man('14:00', '15:' + String(BUF).padStart(2, '0'));
     expect((await admin('POST', 'hours', { date: DAY, s: '10:00', e: '15:00' })).status).toBe(200);
+  });
+
+  it('ネット予約は片づけの分も許さない（受付と同じ物差し）：14:00〜15:00 のネット予約があるのに 14:50 までにすると 409', async () => {
+    await book('14:00');
+    const r = await admin('POST', 'hours', { date: DAY, s: '10:00', e: '14:50' });
+    expect(r.status).toBe(409);
+    expect(await hoursOf()).toMatchObject({ s: '10:00', e: '18:00' });
+    expect((await admin('POST', 'hours', { date: DAY, s: '10:00', e: '15:00' })).status).toBe(200);   // ちょうど終わりまでなら通る
   });
 
   it('予約停止は数えない（はみ出ても止めない）。長くするのはいつでもできる', async () => {

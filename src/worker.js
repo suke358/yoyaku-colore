@@ -619,9 +619,9 @@ async function handleAdmin(request, env, path) {
   if (path === 'hours' && m === 'POST') {
     if (!isDate(b.date) || !isTime(b.s) || !isTime(b.e) || m2(b.s) >= m2(b.e)) return json({ error: '日にちと時間を確かめてください' }, 400);
     // 短くする前に：新しい営業時間からはみ出る予約（ネット・LINE・電話）があれば、変えずに知らせる（2026/11/03）。
-    // はみ出る＝始まりが新しい開始より前、または終わりが新しい終わり＋後の片づけ（BUFFER_MIN）より後（手入力の予約を入れるときと同じ物差し）。予約停止は数えない
+    // はみ出る＝始まりが新しい開始より前、または終わりが新しい終わりより後（ネット予約は受付と同じ物差し）。手入力の予約は終わり＋後の片づけ（BUFFER_MIN）まで許す（手入力を入れるときと同じ物差し）。予約停止は数えない
     var cur = /** @type {{ id: string, s: string, e: string, kind: string, menu: string, name: string }[]} */ ((await env.DB.prepare("SELECT id, s, e, kind, menu, name FROM blocks WHERE date = ?1 AND kind <> 'stop' ORDER BY s").bind(b.date).all()).results);
-    var out = cur.filter(function (x) { return m2(x.s) < m2(b.s) || m2(x.e) > m2(b.e) + BUFFER_MIN; });
+    var out = cur.filter(function (x) { return m2(x.s) < m2(b.s) || m2(x.e) > m2(b.e) + (x.kind === 'net' ? 0 : BUFFER_MIN); });   // ネット予約は受付と同じく終わり＝営業の終わりまで（枠に片づけが入っている。レビュー 11/03）
     if (out.length) {
       var list = out.map(function (x) { return x.s + '〜' + x.e + (x.kind === 'net' ? '（ネット）' : '（LINE・電話）'); });
       return json({ error: '営業時間の外になる予約が ' + out.length + ' 件あります：' + list.join('、') + '。先に予約を動かすか取り消してから、営業時間を変えてください', outside: out.map(function (x) { return { id: x.id, s: x.s, e: x.e, kind: x.kind }; }) }, 409);
@@ -660,7 +660,7 @@ async function handleAdmin(request, env, path) {
     var bid = String(b.id);
     // ネット予約は、お客さんにメールが行かないので：取り消しの記録（cancels）に by_shop=1・mailng=1 で写してから消す（1 つの batch）→ 返事に連絡先を付け、画面で「お客さまに連絡を」と出す（2026/11/03）
     var row = /** @type {{ kind: string, date: string, s: string, e: string, menu: string, name: string, tel: string, email: string }|null} */ (await env.DB.prepare('SELECT kind, date, s, e, menu, name, tel, email FROM blocks WHERE id = ?1').bind(bid).first());
-    if (row && row.kind === 'net') {
+    if (row && row.kind === 'net' && row.date >= nowJST().date) {   // 過ぎた日の予約は、記録・連絡のお願いをせず消すだけ（名前なども空になっている。レビュー 11/03）
       var rs = await env.DB.batch([
         env.DB.prepare("INSERT OR REPLACE INTO cancels (id, date, s, e, menu, name, tel, email, token, at, mailng, by_shop) SELECT id, date, s, e, menu, name, tel, email, cancel_token, ?2, 1, 1 FROM blocks WHERE id = ?1 AND kind = 'net'").bind(bid, new Date().toISOString()),
         env.DB.prepare("DELETE FROM blocks WHERE id = ?1 AND kind = 'net'").bind(bid)
