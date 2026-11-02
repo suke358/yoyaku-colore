@@ -286,12 +286,16 @@ describe('お客さん側の予約の取り消し（2026/10/30）', () => {
     expect((await cancel({ t: a.token })).status).toBe(404);
   });
 
-  it('お店の画面で消した予約は「見つかりません」（取り消し済み ではない）。手入力の予約（LINE・電話）は照合で見つからない', async () => {
+  it('お店の画面で消した予約は「取り消し済み」（2026/11/03 から cancels に by_shop で残すため。前は「見つかりません」）。手入力の予約（LINE・電話）は照合で見つからない', async () => {
     const a = await book(D, '10:00');
     expect((await admin('DELETE', 'block', { id: a.id })).status).toBe(200);
-    expect((await cancel({ t: a.token })).status).toBe(404);
+    const r0 = await cancel({ t: a.token });
+    expect(r0.status).toBe(200); expect((await r0.json()).already).toBe(true);
     expect((await admin('POST', 'block', { date: D, s: '14:00', e: '15:00', menu: M1.name, name: 'テスト 花子' })).status).toBe(200);
-    expect((await cancel({ date: D, tel: TEL, email: MAIL })).status).toBe(404);
+    const r1 = await cancel({ date: D, tel: TEL, email: MAIL });   // 3 つの照合で当たるのは、お店で取り消したネット予約の記録だけ（取り消し済み）。手入力の予約は電話・メールを持たないので当たらない
+    expect(r1.status).toBe(200); expect((await r1.json()).already).toBe(true);
+    expect(await blocksOf(D)).toHaveLength(1);
+    expect(await cancel({ date: D, tel: TEL, email: MAIL, confirm: true }).then((r) => r.json())).toMatchObject({ already: true });   // 押しても手入力の予約は消えない
     expect(await blocksOf(D)).toHaveLength(1);
   });
 
@@ -349,7 +353,8 @@ describe('お客さん側の予約の取り消し（2026/10/30）', () => {
     const r = await post('/api/book', { date: D, start: '10:00', menu: M1.name, name: '次の 人', tel: '090-3333-3333', email: 'next@example.com' });
     expect(r.status).toBe(200);
     expect(await blocksOf(D)).toHaveLength(1);
-    expect(await cancelsAll()).toHaveLength(0);   // 管理画面の取り消しは cancels に残らない
+    const cx = await cancelsAll();   // 管理画面の取り消しも cancels に残す（by_shop=1。2026/11/03。前は残らなかった）
+    expect(cx).toHaveLength(1); expect(cx[0].by_shop).toBe(1);
   });
 
   it('取り消しのページ /cancel が開ける（noindex・照合の入力・確認の作り）', async () => {
