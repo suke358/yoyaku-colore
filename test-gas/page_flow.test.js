@@ -26,8 +26,9 @@ describe('3. 予約完了画面の「確認メールをお送りしました」'
     expect(h).not.toContain('お送りできませんでした');
   });
   it('送れなかったとき（mail:false）：黄色の「お送りできませんでした」だけ。「お送りしました」「届かないときは」は出ない', () => {
-    const h = page({ ok: true, mail: false, note: '確認メールをお送りできませんでした。確認メールが届かない場合は LINE かお電話でご連絡ください' });
+    const h = page({ ok: true, mail: false, note: '確認メールをお送りできませんでした。ご予約は受け付けています。念のため LINE かお電話でご連絡ください' });
     expect(h).toContain('お送りできませんでした');
+    expect(h).toContain('ご予約は受け付けています');
     expect(h).not.toContain('お送りしました');
     expect(h).not.toContain('迷惑メール');
     expect(h).not.toContain('hana@example.com');
