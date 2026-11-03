@@ -5,7 +5,9 @@
   "scripts": {
     "test": "vitest run && vitest run -c vitest.gas.config.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "test-kankyou": "node test-kankyou/start.mjs",
+    "e2e": "node test-kankyou/e2e.mjs"
   },
   "repository": {
     "type": "git",

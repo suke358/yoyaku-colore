@@ -1,0 +1,38 @@
+// テスト用の予約システムの設定（2026/11/03）。本番の wrangler.jsonc とは別のファイル。手元（wrangler dev）だけで使う
+// 画面（../public）と API（../src/worker.js）は本番と同じものを、そのまま使う（中身を変えずに試すため）
+// ちがうのは 3 つだけ：
+//   ① 予約表（D1）とバックアップ（KV）は、テスト用の名前と「手元だけ」の番号（本番の番号は書かない。Cloudflare にはつながない）
+//   ② メールの係（GAS）は、手元の偽物 http://127.0.0.1:8788/exec（test-kankyou/fake_gas.mjs。メールは外に出さず、画面で見られる）
+//   ③ 合言葉はテスト用（本物ではない。このファイルに書いてよい）
+// このフォルダには .dev.vars を置かない（置くと本物の GAS の URL が入るおそれ。start.mjs が見つけたら止まる）
+{
+  "name": "yoyaku-colore-test",
+  "main": "../src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "../public",
+    "binding": "ASSETS"
+  },
+  "rules": [{ "type": "Text", "globs": ["**/*.jsonc"], "fallthrough": true }],
+  // ① 予約表：手元だけ（番号は本物でない。もし --remote で動かしても、この番号の D1 は Cloudflare に無いので本番には届かない）
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "yoyaku-colore-test",
+      "database_id": "00000000-0000-4000-8000-000000001103"
+    }
+  ],
+  // ① バックアップ・2 日前のお知らせの印：手元だけ（本物でない番号）
+  "kv_namespaces": [
+    { "binding": "BACKUP", "id": "00000000000040008000000000001103" }
+  ],
+  // Cron は本番と同じ 2 本（手元では自動で動かない。start.mjs が出す「手で動かす」の URL で動かす）
+  "triggers": { "crons": ["30 19 * * *", "0 1 * * *"] },
+  // ②③ テスト用の値（本物ではない）
+  "vars": {
+    "ADMIN_PASSWORD": "test-admin-1103",
+    "VIEW_PASSWORD": "test-miru-1103",
+    "GAS_URL": "http://127.0.0.1:8788/exec",
+    "GAS_TOKEN": "test-gas-token-1103"
+  }
+}

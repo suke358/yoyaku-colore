@@ -3,3 +3,5 @@ node_modules/
 .dev.vars
 .DS_Store
 gas/本番の合言葉.txt
+# テスト用の予約システムの予約表・送ったつもりのメール（手元だけ。2026/11/03）
+test-kankyou/.state/
