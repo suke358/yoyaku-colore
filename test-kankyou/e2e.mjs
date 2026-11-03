@@ -51,6 +51,9 @@ const page = await ctx.newPage();
 page.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
 const shop = await ctx.newPage();
 shop.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
+// 画面の中の確認（#dlg。11/3 気づき8で iPhone の小窓をやめた）を待って中身を読む・ボタンを押す
+const dlgWait = async () => { await shop.waitForFunction(() => { const d = document.getElementById('dlg'); return d && d.style.display !== 'none' && d.textContent.length > 0; }, null, { timeout: 8000 }); return shop.evaluate(() => document.getElementById('dlg').textContent); };
+const dlgPress = async (id) => { await shop.click('#' + id); await shop.waitForFunction(() => document.getElementById('dlg').style.display === 'none', null, { timeout: 8000 }); };
 
 // お店の画面：カレンダーの日を押す（月をまたぐときは › で進める）
 async function adminTap(k) {
@@ -168,8 +171,10 @@ try {
     await adminTap(D2);
     await shop.locator('.ti.net button', { hasText: '予約を取り消す' }).click();
     await shop.locator('.askc button.yes').click();
-    await until(async () => dialogs.length > 0);
-    ok(dialogs.some((t) => t.includes('090-3333-4444')), '連絡先の案内（電話番号）が出ない');
+    const t = await dlgWait();
+    ok(t.includes('090-3333-4444'), '連絡先の案内（電話番号）が出ない');
+    await dlgPress('dlgYes');
+    ok(!dialogs.length, 'iPhone の小窓（confirm・alert）が出た：' + dialogs.join(' / '));
     const x = await dayOf(D2); ok(!x.blocks.some((b) => b.kind === 'net') && x.cancels.some((c) => c.by_shop === 1), '取り消し・記録（お店で取り消し）がない');
     await new Promise((r) => setTimeout(r, 500));
     ok((await mails()).length === before, 'お店の取り消しでメールが出た');
@@ -184,13 +189,18 @@ try {
     const x = await dayOf(D3); ok(x.blocks.some((b) => b.kind === 'man' && b.name === 'テスト 電話'), 'LINE・電話の予約が入っていない');
   });
 
-  await step('休みにする（「休み」→ 日を押す → 「1 件が消えます」に OK）→ お客さんの画面から消える', async () => {
+  await step('休みにする（「休み」→ 日を押す → 画面の中の「1 件が消えます」で「やめる」→ もう一度で「休みにする」）→ お客さんの画面から消える', async () => {
     dialogs.length = 0;
     await shop.click('#mPat');
     await shop.locator('[data-pat="-1"]').click();
     await adminTap(D3);
+    ok((await dlgWait()).includes('1 件が消えます'), '「1 件が消えます」の確かめが出ない');
+    await dlgPress('dlgNo');
+    const y = await dayOf(D3); ok(y.hours && y.blocks.length, '「やめる」なのに消えた');
+    for (let i = 0; i < 4; i++) { await adminTap(D3); await dlgWait(); await dlgPress('dlgNo'); }   // 4 回以上出しても小窓にならない
+    await adminTap(D3); await dlgWait(); await dlgPress('dlgYes');
     await toastHas(shop, 'を休みにしました');
-    ok(dialogs.some((t) => t.includes('1 件が消えます')), '「1 件が消えます」の確かめが出ない');
+    ok(!dialogs.length, 'iPhone の小窓（confirm・alert）が出た：' + dialogs.join(' / '));
     const x = await dayOf(D3); ok(!x.hours && !x.blocks.length, '休みになっていない');
     await page.goto(B + '/'); await page.waitForSelector('.dbtn');
     ok(!(await page.locator(`.dbtn[aria-label^="${md(D3).m}月${md(D3).d}日 "]`).count()), 'お客さんの画面にまだ出る');
@@ -212,8 +222,11 @@ try {
     await adminTap(D4);
     await shop.locator('summary', { hasText: 'この日の営業時間を変える' }).click();
     await shop.locator('details.fold').first().locator('select').first().selectOption('11:00');
-    await until(async () => dialogs.length > 0);
-    ok(dialogs.some((t) => t.includes('10:00')), 'はみ出る予約の時間が出ない：' + dialogs.join(' / '));
+    const t = await dlgWait();
+    ok(t.includes('10:00'), 'はみ出る予約の時間が出ない：' + t);
+    await dlgPress('dlgYes');
+    ok((await shop.inputValue('#hS')) === '10:00', '選ぶ欄が元の時刻（10:00）に戻っていない（気づき7）');
+    ok(!dialogs.length, 'iPhone の小窓（confirm・alert）が出た：' + dialogs.join(' / '));
     const x = await dayOf(D4); ok(x.hours.s === '10:00', '営業時間が変わってしまった');
   });
 
