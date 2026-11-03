@@ -48,6 +48,8 @@ function wranglerCmd() {
  * @param {{ port: number, gasPort: number, stateDir: string, ip?: string, quiet?: boolean, testScheduled?: boolean }} o
  */
 export async function startAll(o) {
+  const major = +process.versions.node.split('.')[0];
+  if (major < 22) throw new Error('Node.js が古いので動きません（今 v' + process.versions.node + '・v22 以上が要る。wrangler が v22 以上でないと動かない）。Mac の node を上げてから、もう一度');
   const gasUrl = 'http://127.0.0.1:' + o.gasPort + '/exec';
   const bad = safetyProblems({ gasUrl });
   if (bad.length) throw new Error('安全の確かめで止めました：\n- ' + bad.join('\n- '));
@@ -69,9 +71,14 @@ export async function startAll(o) {
   wr.stderr.on('data', (b) => { wout += b; log('予約システム')(b); });
   procs.push(wr);
   const stop = () => { for (const p of procs) { try { p.kill('SIGTERM'); } catch (e) { } } };
+  // 途中で落ちたら（node が古い・ポートが使われている など）、待たずにすぐ止める（2026/11/03 レビューの直し）
+  let died = '';
+  gas.on('exit', (c) => { if (!died) died = '偽物のメール係が止まりました（終わりの番号 ' + c + '）'; });
+  wr.on('exit', (c) => { if (!died) died = 'wrangler が止まりました（終わりの番号 ' + c + '）'; });
+  wr.on('error', (e) => { if (!died) died = 'wrangler を動かせません：' + e.message; });
   try {
-    await waitFor('http://127.0.0.1:' + o.gasPort + '/mails.json', 20000);
-    await waitFor('http://127.0.0.1:' + o.port + '/api/days', 120000);
+    await waitFor('http://127.0.0.1:' + o.gasPort + '/mails.json', 20000, () => died);
+    await waitFor('http://127.0.0.1:' + o.port + '/api/days', 120000, () => died);
   } catch (e) {
     stop();
     throw new Error(String(e) + '\n--- wrangler の出力 ---\n' + wout.slice(-3000));
@@ -79,11 +86,12 @@ export async function startAll(o) {
   return { stop, base: 'http://127.0.0.1:' + o.port, gas: 'http://127.0.0.1:' + o.gasPort, output: () => wout };
 }
 
-async function waitFor(url, ms) {
+async function waitFor(url, ms, dead = () => '') {
   const end = Date.now() + ms;
   let last = '';
   while (Date.now() < end) {
-    try { const r = await fetch(url); if (r.status < 500) return; last = 'status ' + r.status; } catch (e) { last = String(e); }
+    if (dead()) throw new Error(dead());
+    try { const r = await fetch(url); if (r.status < 500 && /json/.test(r.headers.get('content-type') || '')) return; last = 'status ' + r.status + '（ほかのものがこのポートを使っているかもしれません）'; } catch (e) { last = String(e); }
     await new Promise((r) => setTimeout(r, 500));
   }
   throw new Error(url + ' が答えません（' + last + '）');
