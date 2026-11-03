@@ -109,6 +109,16 @@ details.more summary{cursor:pointer;padding:4px 0}
 .sub{border-top:1px dashed var(--line);margin-top:14px;padding-top:12px}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#333;color:#fff;border-radius:999px;padding:9px 16px;font-size:13px;opacity:0;transition:opacity .25s;z-index:30;pointer-events:none}
 .toast.on{opacity:.92}
+/* 画面の中の確認（2026/11/03）。iPhone の小窓（confirm・alert）は何度か出すと「ダイアログを表示しない」が出て、押すと確認が出なくなるため、自前の画面にした */
+.dlg{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:40;background:rgba(40,30,28,.45);-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;padding:16px}
+.dlgbox{background:#fff;border-radius:14px;padding:18px 16px 14px;max-width:420px;width:100%;box-shadow:0 6px 24px rgba(0,0,0,.18)}
+.dlgbox b{display:block;font-size:16px;margin-bottom:6px}
+.dlgbox p{margin:0;font-size:14px;white-space:pre-line;word-break:keep-all;overflow-wrap:break-word;word-wrap:break-word}
+.dlgab{display:-webkit-box;display:-webkit-flex;display:flex;margin-top:14px}   /* flex の gap は古いスマホで効かないので、ボタンの margin で間をあける */
+.dlgab button{-webkit-box-flex:1;-webkit-flex:1;flex:1;margin-left:8px;border:1px solid var(--line);background:#fff;border-radius:10px;padding:11px 8px;font-size:15px;color:var(--ink)}
+.dlgab button:first-child{margin-left:0}
+.dlgab button.yes{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:bold}
+.dlgab button.yes.danger{background:#d33;border-color:#d33}
 .empty{color:var(--mute);text-align:center;padding:14px 0;font-size:14px}
 .foot{font-size:11px;color:var(--mute);text-align:center;margin-top:20px}
 .foot a{color:var(--mute)}
@@ -148,6 +158,7 @@ details.more summary{cursor:pointer;padding:4px 0}
 </section>
 </main>
 <div class="toast" id="toast"></div>
+<div class="dlg" id="dlg"></div>
 
 <script>
 var SHOP=null;   // /shop.jsonc
@@ -165,6 +176,22 @@ function m2(t){var a=t.split(":");return +a[0]*60+ +a[1]}
 function t2(m){return ("0"+Math.floor(m/60)).slice(-2)+":"+("0"+m%60).slice(-2)}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function toast(t){var e=document.getElementById("toast");e.textContent=t;e.classList.add("on");clearTimeout(e._t);e._t=setTimeout(function(){e.classList.remove("on")},2000)}
+/* 画面の中の確認（2026/11/03）：o＝{title,body,ok,cancel,danger,onOk}。cancel を渡すと2つのボタン（初めは「やめる」にフォーカス）、渡さないとお知らせだけ。
+   confirm・alert は使わない（iPhone で「ダイアログを表示しない」を押すと、その後の確認が出なくなるため） */
+var dlgOk=null;
+function ask(o){
+  var d=document.getElementById("dlg");dlgOk=o.onOk||null;
+  d.innerHTML="<div class='dlgbox' role='dialog' aria-modal='true'>"+(o.title?"<b>"+esc(o.title)+"</b>":"")+"<p>"+esc(o.body||"")+"</p><div class='dlgab'>"+
+    (o.cancel?"<button id='dlgNo' onclick='dlgClose(false)'>"+esc(o.cancel)+"</button>":"")+
+    "<button id='dlgYes' class='yes"+(o.danger?" danger":"")+"' onclick='dlgClose(true)'>"+esc(o.ok||"わかりました")+"</button></div></div>";
+  d.style.display="-webkit-flex";d.style.display="flex";   // 古い iPhone は -webkit-flex（flex が分からなければ前の値が残る）
+  try{document.getElementById(o.cancel?"dlgNo":"dlgYes").focus()}catch(x){}
+}
+function dlgClose(yes){
+  var d=document.getElementById("dlg");d.style.display="none";d.innerHTML="";
+  var f=dlgOk;dlgOk=null;   // 先に空にする（2回押しても1回だけ）
+  if(yes&&f)f();
+}
 function parseJsonc(t){return JSON.parse(t.replace(/^\s*\/\/.*$/gm,"").replace(/[ \t]+\/\/[^"\n]*$/gm,""))}
 
 /* ---------- 画面の押しもの（data 属性で受ける。設定の名前を JS の文字列に埋め込まない。2026/10/26） ---------- */
@@ -266,21 +293,23 @@ function tapDay(k){
     if(pat==-1){
       offDay(k);
     } else {var p=PATS[pat];
-      api("hours","POST",{date:k,s:p.s,e:p.e}).then(function(){toast(jp(k)+" "+p.s+"〜"+p.e);return reload()}).catch(function(e){hoursErr(e)});
+      api("hours","POST",{date:k,s:p.s,e:p.e}).then(function(){toast(jp(k)+" "+p.s+"〜"+p.e);return reload()}).catch(function(e){hoursErr(e,hours[k])});
     }
-  } else {sel=k;renderAdmin()}
+  } else {if(sel!==k)hOpen=false;sel=k;renderAdmin()}
 }
 /* 休みにする（2026/11/03）：LINE・電話の予約がある日は、サーバーが件数を返す → 「n 件消えます」と確かめてから消す。ない日は今までどおり 1 回で */
 function offDay(k){
   api("hours","DELETE",{date:k}).then(function(){toast(jp(k)+" を休みにしました");return reload()}).catch(function(e){
     if(e.status==409&&e.data&&e.data.needConfirm){
-      if(!confirm(jp(k)+" を休みにすると、この日の LINE・電話の予約 "+e.data.count+" 件が消えます。\n（消えた予約は元にもどせません。お客さまへの連絡もお願いします）\n\n休みにしますか？"))return;
-      api("hours","DELETE",{date:k,confirm:true}).then(function(){toast(jp(k)+" を休みにしました（予約 "+e.data.count+" 件を消しました）");return reload()}).catch(function(e2){toast(e2.message)});
+      var n=e.data.count;
+      ask({title:"休みにしますか？",body:jp(k)+" を休みにすると、この日の LINE・電話の予約 "+n+" 件が消えます。\n（消えた予約は元にもどせません。お客さまへの連絡もお願いします）",ok:"休みにする",cancel:"やめる",danger:true,onOk:function(){
+        api("hours","DELETE",{date:k,confirm:true}).then(function(){toast(jp(k)+" を休みにしました（予約 "+n+" 件を消しました）");return reload()}).catch(function(e2){toast(e2.message)});
+      }});
     } else toast(e.message);
   });
 }
-/* 営業時間がはみ出る予約で止まったとき（2026/11/03）：短い表示では見落とすので、alert で予約の時間を出す */
-function hoursErr(e){if(e.status==409&&e.data&&e.data.outside){alert(e.message)}else toast(e.message)}
+/* 営業時間がはみ出る予約で止まったとき（2026/11/03）：短い表示では見落とすので、画面の中の確認で予約の時間を出す。hh を渡すと「〇〜〇 のままです」も */
+function hoursErr(e,hh){if(e.status==409&&e.data&&e.data.outside){ask({title:"営業時間は変えていません",body:e.message+(hh?"\n\n営業時間は "+hh.s+"〜"+hh.e+" のままです。":"")})}else toast(e.message)}
 var tOpts=[];
 function opts(v){return tOpts.map(function(t){return "<option"+(t==v?" selected":"")+">"+t+"</option>"}).join("")}
 function renderDay(){
@@ -318,7 +347,7 @@ function renderDay(){
   });
   h+="</div>";
   // この日の営業時間を変える（折りたたみ）
-  h+="<details class='fold'><summary>この日の営業時間を変える</summary><div class='hours'>営業時間 <select onchange='chH(\"s\",this.value)'>"+opts(hh.s)+"</select>〜<select onchange='chH(\"e\",this.value)'>"+opts(hh.e)+"</select></div></details>";
+  h+="<details class='fold'"+(hOpen?" open":"")+"><summary>この日の営業時間を変える</summary><div class='hours'>営業時間 <select id='hS' onchange='chH(\"s\",this.value)'>"+opts(hh.s)+"</select>〜<select id='hE' onchange='chH(\"e\",this.value)'>"+opts(hh.e)+"</select></div></details>";
   var fs=firstFree()||hh.s;
   // 折りたたみ1：LINE・電話で受けた予約を入れる（初期は閉じる）
   h+="<details class='fold'><summary>LINE・電話で受けた予約を入れる</summary>"+
@@ -339,8 +368,18 @@ function renderDay(){
   b.innerHTML=h;
 }
 function firstFree(){var st=starts(sel,shortest());return st[0]}
-function chH(w,v){var hh=hours[sel],n={s:hh.s,e:hh.e};n[w]=v;if(m2(n.s)>=m2(n.e)){toast("終わりを始まりより後にしてください");renderAdmin();return}
-  api("hours","POST",{date:sel,s:n.s,e:n.e}).then(function(){toast("営業時間を変えました");return reload()}).catch(function(e){hoursErr(e);renderAdmin()})}
+/* 営業時間を変える。止まったとき（はみ出る予約・終わりが前）は、選ぶ欄を実際の時刻に戻す（2026/11/03：「15:00」のまま残って変わったように見えたため）。
+   折りたたみは開いたまま描き直し（hOpen）、iPhone の選ぶ画面も閉じてから戻す */
+var hOpen=false;
+function chH(w,v){var hh=hours[sel],n={s:hh.s,e:hh.e};n[w]=v;hOpen=true;
+  if(m2(n.s)>=m2(n.e)){toast("終わりを始まりより後にしてください");backH();return}
+  api("hours","POST",{date:sel,s:n.s,e:n.e}).then(function(){toast("営業時間を変えました");return reload()}).catch(function(e){hoursErr(e,hours[sel]);backH()})}
+function backH(){
+  try{if(document.activeElement&&document.activeElement.blur)document.activeElement.blur()}catch(x){}
+  renderAdmin();
+  var hh=hours[sel],a=document.getElementById("hS"),b=document.getElementById("hE");
+  if(hh&&a&&b){a.value=hh.s;b.value=hh.e}
+}
 var t10=[];for(var mm=6*60;mm<=23*60;mm+=10)t10.push(t2(mm));
 function opts10(v){return t10.map(function(t){return "<option"+(t==v?" selected":"")+">"+t+"</option>"}).join("")}
 function syncEnd(){var s=document.getElementById("bS").value,e=document.getElementById("bE");if(!e)return;if(m2(e.value)<=m2(s))e.value=t2(Math.min(m2(s)+60,23*60))}
@@ -384,7 +423,7 @@ function doCancel(id){
 function unblock(id,msg){return api("block","DELETE",{id:id}).then(function(j){
   if(j&&j.net&&j.contact){   // ネット予約を取り消した：連絡先を出して、お客さまへの連絡を頼む（2026/11/03）。その日の一覧にも「お店で取り消し・要連絡」で残る
     var c=j.contact,L=[c.when+"　"+(c.menu||"")];if(c.name)L.push(c.name+" 様");if(c.tel)L.push("電話 "+c.tel);if(c.email)L.push("メール "+c.email);
-    alert("取り消しました。\nお客さまにはメールが届いていません。LINE・お電話・メールでご連絡ください。\n\n"+L.join("\n"));
+    ask({title:"取り消しました",body:"お客さまにはメールが届いていません。LINE・お電話・メールでご連絡ください。\n\n"+L.join("\n")});
   } else toast(msg||"あけました（HP でまた予約できます）");
   return reload()}).catch(function(e){toast(e.message)});
 }
