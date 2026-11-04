@@ -22,6 +22,7 @@
 //   POST   /api/admin/hours  {date,s,e}          営業時間を入れる・変える（はみ出る予約があれば 409 outside:[…]。変えない。2026/11/03）
 //   DELETE /api/admin/hours  {date[,confirm]}    休みにする（ネット予約がある日は 409）。LINE・電話の予約がある日は confirm:true がないと 409 needConfirm（消える件数 count。2026/11/03）
 //   POST   /api/admin/block  {date,s,e[,menu,kind,name]} LINE・電話の予約（kind man。name は任意。電話・メールは持たない）か 予約停止（kind stop）を入れる（重なったら 409）
+//   PUT    /api/admin/block  {id,date,s,e[,menu,name]} 入れた予約（LINE・電話）と予約停止を直す（日にち・時間・メニュー・名前。ネット予約は直さない＝409。重なったら 409・ない id は 404。重なりの確かめと書きかえは 1 命令。2026/11/04）
 //   DELETE /api/admin/block  {id}                予約を取り消す（あける）。ネット予約は cancels に by_shop=1 で残し、返事に net:true と連絡先 contact（2026/11/03）
 //   POST   /api/admin/settings {key,value}       型などを保存（value は JSON）
 // 見る専用（2026/11/01）：X-Admin-Password が secret VIEW_PASSWORD（8文字以上・ADMIN_PASSWORD と別）と同じなら「見る人」。
@@ -654,6 +655,29 @@ async function handleAdmin(request, env, path) {
     var ok = await insertBlock(env.DB, { id: id, date: b.date, s: b.s, e: b.e, kind: kind, menu: kind === 'stop' ? '' : String(b.menu || '').slice(0, 40), created_at: new Date().toISOString(), name: kind === 'stop' ? '' : String(b.name || '').trim().slice(0, 40) });   // 手入力は名前だけ任意。電話・メールは持たない
     if (!ok) return json({ error: 'ほかの予約と重なっています' }, 409);
     return json({ ok: true, id: id });
+  }
+  // 入れた予約を直す（2026/11/04 本人の気づき：一度入れた予約を直せない）。LINE・電話の予約（man）と予約停止（stop）だけ。
+  // ネット予約（net）は、お客さんの確認メール・取り消しのリンクと食い違うので直さない（取り消して、お客さまに連絡してから入れ直す）
+  if (path === 'block' && m === 'PUT') {
+    if (!b.id || !isDate(b.date) || !isTime(b.s) || !isTime(b.e) || m2(b.s) >= m2(b.e)) return json({ error: '日にちと時間を確かめてください' }, 400);
+    var eid = String(b.id);
+    var cur1 = /** @type {{ kind: string, menu: string, name: string }|null} */ (await env.DB.prepare('SELECT kind, menu, name FROM blocks WHERE id = ?1').bind(eid).first());
+    if (!cur1) return json({ error: 'この予約は見つかりませんでした（もう取り消されたかもしれません）' }, 404);
+    if (cur1.kind === 'net') return json({ error: 'ネット予約は直せません。取り消して、お客さまにご連絡のうえ入れ直してください' }, 409);
+    var h2 = /** @type {{ s: string, e: string }|null} */ (await env.DB.prepare('SELECT s, e FROM hours WHERE date = ?1').bind(b.date).first());
+    if (!h2) return json({ error: 'この日は休みです' }, 400);
+    if (m2(b.s) < m2(h2.s) || m2(b.e) > m2(h2.e) + BUFFER_MIN) return json({ error: '営業時間の外です' }, 400);
+    var stop = cur1.kind === 'stop';
+    var menu2 = stop ? '' : (b.menu === undefined ? String(cur1.menu || '') : String(b.menu || '').slice(0, 40));
+    var name2 = stop ? '' : (b.name === undefined ? String(cur1.name || '') : String(b.name || '').trim().slice(0, 40));
+    // 自分以外と重ならないときだけ書きかえる（1 命令。同時にネット予約が入っても二重にならない）
+    var up = await env.DB.prepare(
+      "UPDATE blocks SET date = ?2, s = ?3, e = ?4, menu = ?5, name = ?6 WHERE id = ?1 AND kind IN ('man', 'stop') AND NOT EXISTS (SELECT 1 FROM blocks WHERE date = ?2 AND s < ?4 AND e > ?3 AND id <> ?1)"
+    ).bind(eid, b.date, b.s, b.e, menu2, name2).run();
+    if (up.meta && up.meta.changes > 0) return json({ ok: true });
+    var still = await env.DB.prepare('SELECT kind FROM blocks WHERE id = ?1').bind(eid).first();
+    if (!still) return json({ error: 'この予約は見つかりませんでした（もう取り消されたかもしれません）' }, 404);
+    return json({ error: 'ほかの予約と重なっています' }, 409);
   }
   if (path === 'block' && m === 'DELETE') {
     if (!b.id) return json({ error: 'id がありません' }, 400);

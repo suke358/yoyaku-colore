@@ -71,6 +71,14 @@ input[type=text],input[type=password],select{width:100%;font-size:16px;padding:1
 .ti.asking{flex-wrap:wrap}
 .askc{flex-basis:100%;margin-top:8px;padding:9px 10px;background:#fff;border:1.5px solid #d33;border-radius:10px}   /* 取り消しの確認（2026/10/29）。押し間違い防止 */
 .askc b{display:block;font-size:14px;color:#a11}
+.fixc{flex-basis:100%;margin-top:8px;padding:10px;background:#fff;border:1.5px solid var(--main);border-radius:10px;color:var(--ink)}   /* 入れた予約を直す（2026/11/04） */
+.fixc .fr{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0}
+.fixc .fr select,.fixc .fr input[type=date]{width:auto;font-size:16px;padding:7px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+.fixc .ab{margin-top:10px}
+.fixc .ab button{font-size:14px;padding:9px 14px;margin-right:8px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink)}
+.fixc .ab button.yes{background:var(--main);border-color:var(--main);color:#fff;font-weight:bold}
+.fixc .ab button:disabled{opacity:.5}
+.ti .bs{display:flex;flex-direction:column;gap:6px}
 .askc small{display:block;font-size:12px;color:var(--mute);margin-top:2px}
 .askc .ab{margin-top:8px}
 .askc .ab button{font-size:14px;padding:9px 12px;margin-right:8px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink)}
@@ -324,7 +332,7 @@ function renderDay(){
   if(!bl.length){var cn=(cancels[sel]||[]).length;h+="<div class='empty'>"+(cn?"この日の予約はありません（取り消し "+cn+"件）":"この日の予約はまだありません")+"</div>";}   // 取り消しだけの日は、その数も（2026/10/30）
   bl.forEach(function(x){
     if(x.kind=="stop"){
-      h+="<div class='ti stop'><span><b>予約停止</b>　"+esc(x.s)+"〜"+esc(x.e)+"<br><small>この時間はネット予約に出ません</small></span><button onclick=\"unblock('"+esc(x.id)+"','予約停止をやめました（HP でまた予約できます）')\">予約停止をやめる</button></div>";
+      h+="<div class='ti stop'><span><b>予約停止</b>　"+esc(x.s)+"〜"+esc(x.e)+"<br><small>この時間はネット予約に出ません</small></span><span class='bs'><button id='fb_"+esc(x.id)+"' onclick=\"askFix('"+esc(x.id)+"')\">直す</button><button onclick=\"unblock('"+esc(x.id)+"','予約停止をやめました（HP でまた予約できます）')\">予約停止をやめる</button></span></div>";
       return;
     }
     var net=x.kind=="net", nm=x.name||(net?"（お名前なし）":"LINE・電話の予約");
@@ -335,7 +343,7 @@ function renderDay(){
     }
     h+="<div class='ti "+(net?"net":"man")+"'><span><span class='nm'>"+esc(nm)+"</span><span class='tm'>"+esc(x.s)+"〜"+esc(x.e)+"</span>"+(x.mailng?"<span class='mlng'>メール未送</span>":"")+"<br>"+
        "<span class='tag "+(net?"net":"man")+"'>"+(net?"ネット":"LINE・電話")+"</span>"+esc(x.menu||"")+"<small style='color:var(--mute)'>（カウンセリング・お片づけを含む）</small>"+
-       (ct?"<span class='ct'>"+ct+"</span>":"")+"</span><button id='cb_"+esc(x.id)+"' onclick=\"askCancel('"+esc(x.id)+"')\">予約を取り消す</button></div>";
+       (ct?"<span class='ct'>"+ct+"</span>":"")+"</span><span class='bs'>"+(net?"":"<button id='fb_"+esc(x.id)+"' onclick=\"askFix('"+esc(x.id)+"')\">直す</button>")+"<button id='cb_"+esc(x.id)+"' onclick=\"askCancel('"+esc(x.id)+"')\">予約を取り消す</button></span></div>";
   });
   // お客さまが自分で取り消した予約（2026/10/30）：枠はあいている。メールを送れなかったもの（お店に知らせのメールが届いていない）には印
   (cancels[sel]||[]).slice().sort(function(a,c){return a.s<c.s?-1:1}).forEach(function(x){
@@ -409,6 +417,35 @@ function askCancel(id){
     (isNet?"<small><b>お客さまにはメールが届きません。</b>取り消したあと、お客さまにご連絡ください。</small>":"")+
     "<div class='ab'><button class='yes' onclick=\"doCancel('"+esc(id)+"')\">本当に取り消す</button><button class='no' onclick=\"noCancel('"+esc(id)+"')\">やめる</button></div>";
   try{a.getElementsByTagName("button")[1].focus()}catch(x){}   // 初めに「やめる」にフォーカス（うっかり Enter でも消えない）
+}
+/* 入れた予約（LINE・電話）と予約停止を直す（2026/11/04）：行の中に日にち・始まり・終わり・お名前・メニューを出して「直す」で保存。
+   重なり・営業時間の外はサーバーが断る（409・400）。ネット予約には「直す」を出さない（お客さんのメール・取り消しのリンクと食い違うため） */
+function findB(id){var a=blocks[sel]||[];for(var i=0;i<a.length;i++)if(a[i].id==id)return a[i];return null}
+function askFix(id){
+  var x=findB(id),b=document.getElementById("fb_"+id);if(!x||!b)return;
+  var row=b.parentNode.parentNode;
+  if(document.getElementById("fx_"+id))return;
+  if(row.className.indexOf("asking")<0)row.className+=" asking";
+  var f=document.createElement("div");f.id="fx_"+id;f.className="fixc";row.appendChild(f);
+  var stop=x.kind=="stop";
+  f.innerHTML="<b>"+(stop?"予約停止を直す":"予約を直す")+"</b>"+
+    "<div class='fr'>日にち <input type='date' id='fd_"+esc(id)+"' value='"+esc(x.date)+"' min='"+key(today)+"'></div>"+
+    "<div class='fr'><select id='fs_"+esc(id)+"'>"+opts10(x.s)+"</select>〜<select id='fe_"+esc(id)+"'>"+opts10(x.e)+"</select></div>"+
+    (stop?"":"<label class='f'>お名前（任意）</label><input type='text' id='fn_"+esc(id)+"' maxlength='40' value='"+esc(x.name||"")+"' autocomplete='off'>"+
+      "<label class='f'>メニュー（任意）</label><input type='text' id='fm_"+esc(id)+"' maxlength='40' value='"+esc(x.menu||"")+"' autocomplete='off'>")+
+    "<small style='display:block;color:var(--mute);margin-top:4px'>終わりは、お片づけの時間も含めた時刻です。</small>"+
+    "<div class='ab'><button class='yes' id='fy_"+esc(id)+"' onclick=\"doFix('"+esc(id)+"')\">この内容で直す</button><button onclick=\"noFix('"+esc(id)+"')\">やめる</button></div>";
+}
+function noFix(id){var f=document.getElementById("fx_"+id);if(f&&f.parentNode){var row=f.parentNode;row.removeChild(f);if(!row.querySelector(".askc"))row.className=row.className.replace(" asking","")}}
+function doFix(id){
+  var x=findB(id);if(!x)return;
+  var d=document.getElementById("fd_"+id).value,s=document.getElementById("fs_"+id).value,e=document.getElementById("fe_"+id).value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){toast("日にちを選んでください");return}
+  if(m2(e)<=m2(s)){toast("終わりを始まりより後にしてください");return}
+  var body={id:id,date:d,s:s,e:e};
+  if(x.kind!="stop"){body.name=document.getElementById("fn_"+id).value;body.menu=document.getElementById("fm_"+id).value}
+  var y=document.getElementById("fy_"+id);if(y)y.disabled=true;
+  api("block","PUT",body).then(function(){toast(jp(d)+" "+s+"〜"+e+" に直しました");if(d!=sel)sel=d;return reload()}).catch(function(er){if(y)y.disabled=false;toast(er.message)});
 }
 function noCancel(id){
   var a=document.getElementById("ca_"+id),b=document.getElementById("cb_"+id);
