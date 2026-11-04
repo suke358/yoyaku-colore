@@ -182,7 +182,7 @@ function parse(k){var a=k.split("-");return new Date(+a[0],+a[1]-1,+a[2])}
 function jp(k){var d=parse(k);return (d.getMonth()+1)+"月"+d.getDate()+"日（"+DOW[d.getDay()]+"）"}
 function m2(t){var a=t.split(":");return +a[0]*60+ +a[1]}
 function t2(m){return ("0"+Math.floor(m/60)).slice(-2)+":"+("0"+m%60).slice(-2)}
-function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}   // ' も（値を ' で囲む所があるため。2026/11/04 レビュー）
 function toast(t){var e=document.getElementById("toast");e.textContent=t;e.classList.add("on");clearTimeout(e._t);e._t=setTimeout(function(){e.classList.remove("on")},2000)}
 /* 画面の中の確認（2026/11/03）：o＝{title,body,ok,cancel,danger,onOk}。cancel を渡すと2つのボタン（初めは「やめる」にフォーカス）、渡さないとお知らせだけ。
    confirm・alert は使わない（iPhone で「ダイアログを表示しない」を押すと、その後の確認が出なくなるため） */
@@ -389,6 +389,7 @@ function backH(){
   if(hh&&a&&b){a.value=hh.s;b.value=hh.e}
 }
 var t10=[];for(var mm=6*60;mm<=23*60;mm+=10)t10.push(t2(mm));
+function optsAt(v){var a=t10.slice();if(v&&a.indexOf(v)<0){a.push(v);a.sort()}return a.map(function(t){return "<option"+(t==v?" selected":"")+">"+t+"</option>"}).join("")}   // 直すとき：10分きざみでない時刻（10:35・24:00 など）もそのまま選べる（2026/11/04 レビュー）
 function opts10(v){return t10.map(function(t){return "<option"+(t==v?" selected":"")+">"+t+"</option>"}).join("")}
 function syncEnd(){var s=document.getElementById("bS").value,e=document.getElementById("bE");if(!e)return;if(m2(e.value)<=m2(s))e.value=t2(Math.min(m2(s)+60,23*60))}
 function bName(){var el=document.getElementById("bName");return el?el.value.trim():""}
@@ -407,7 +408,7 @@ function block(mn,name){var s=document.getElementById("bS").value;var mm=null;SH
 /* 予約の取り消しの確認（2026/10/29）：押してすぐは消さない。行の中に「本当に取り消す／やめる」を出す。予約停止をやめる（stop）は今のまま */
 function askCancel(id){
   var b=document.getElementById("cb_"+id);if(!b)return;
-  var row=b.parentNode;
+  var row=b.parentNode;if(row.className.indexOf("bs")>=0)row=row.parentNode;   // ボタンは span.bs の中（2026/11/04「直す」を足したとき）。行（.ti）を見る
   if(row.className.indexOf("asking")<0)row.className+=" asking";
   b.style.display="none";
   var a=document.getElementById("ca_"+id);
@@ -430,7 +431,7 @@ function askFix(id){
   var stop=x.kind=="stop";
   f.innerHTML="<b>"+(stop?"予約停止を直す":"予約を直す")+"</b>"+
     "<div class='fr'>日にち <input type='date' id='fd_"+esc(id)+"' value='"+esc(x.date)+"' min='"+key(today)+"'></div>"+
-    "<div class='fr'><select id='fs_"+esc(id)+"'>"+opts10(x.s)+"</select>〜<select id='fe_"+esc(id)+"'>"+opts10(x.e)+"</select></div>"+
+    "<div class='fr'><select id='fs_"+esc(id)+"'>"+optsAt(x.s)+"</select>〜<select id='fe_"+esc(id)+"'>"+optsAt(x.e)+"</select></div>"+
     (stop?"":"<label class='f'>お名前（任意）</label><input type='text' id='fn_"+esc(id)+"' maxlength='40' value='"+esc(x.name||"")+"' autocomplete='off'>"+
       "<label class='f'>メニュー（任意）</label><input type='text' id='fm_"+esc(id)+"' maxlength='40' value='"+esc(x.menu||"")+"' autocomplete='off'>")+
     "<small style='display:block;color:var(--mute);margin-top:4px'>終わりは、お片づけの時間も含めた時刻です。</small>"+
@@ -449,7 +450,7 @@ function doFix(id){
 }
 function noCancel(id){
   var a=document.getElementById("ca_"+id),b=document.getElementById("cb_"+id);
-  if(a&&a.parentNode){a.parentNode.className=a.parentNode.className.replace(" asking","");a.parentNode.removeChild(a)}
+  if(a&&a.parentNode){var rw=a.parentNode;rw.removeChild(a);if(!rw.querySelector(".fixc"))rw.className=rw.className.replace(" asking","")}
   if(b){b.style.display="";try{b.focus()}catch(x){}}
 }
 function doCancel(id){

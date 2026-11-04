@@ -270,7 +270,7 @@ function t2(m) { return ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + (m %
 /** @param {unknown} s @returns {boolean} */
 function isDate(s) { return /^\d{4}-\d{2}-\d{2}$/.test(String(s)); }
 /** @param {unknown} s @returns {boolean} */
-function isTime(s) { return /^\d{2}:\d{2}$/.test(String(s)) && m2(/** @type {string} */ (s)) >= 0 && m2(/** @type {string} */ (s)) <= 24 * 60; }
+function isTime(s) { return /^(([01]\d|2[0-3]):[0-5]\d|24:00)$/.test(String(s)) && m2(/** @type {string} */ (s)) >= 0 && m2(/** @type {string} */ (s)) <= 24 * 60; }
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
 // 日本時間（Workers は UTC で動くので、+9 時間して日付と時刻を出す）

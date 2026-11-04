@@ -129,4 +129,11 @@ describe('入れた予約を直す', () => {
     expect((await put({ id: a, date: DAY, s: '10:00', e: '11:00', name: 'あ'.repeat(60) })).status).toBe(200);
     expect((await rowOf(a)).name.length).toBe(40);
   });
+  it('「10:90」のような時刻は 400（文字の比べで重なりをすり抜けないように。入れるときも同じ）', async () => {
+    const a = await man('10:00', '10:30'); await man('11:00', '11:30');
+    expect((await put({ id: a, date: DAY, s: '10:30', e: '10:90' })).status).toBe(400);
+    expect((await admin('POST', 'block', { date: DAY, s: '12:00', e: '12:90' })).status).toBe(400);
+    expect((await put({ id: a, date: DAY, s: '9:00', e: '10:00' })).status).toBe(400);
+    expect((await rowOf(a)).e).toBe('10:30');
+  });
 });
