@@ -252,11 +252,14 @@ function renderCust(){
   h+="<div class='dsel'>"+jp(sel.k)+"</div><div class='chips'>"+sel.st.map(function(t){return "<button class='chip' aria-label='"+t+"から予約する' onclick=\"openForm('"+sel.k+"','"+t+"')\">"+t+"〜</button>"}).join("")+"</div>";
   document.getElementById("custList").innerHTML=h;
 }
+function kindOf(n){var k=/^(.+?)（.+）$/.exec(String(n));return k?k[1]:""}   // worker.js の kindOf と同じ（2026/11/6）
 function pickMenu(i){   // 押すたびに選ぶ／外す。1 つは必ず残す（全部外すと空きを出せないため）
   var at=menuSel.indexOf(i);
   if(at>=0){if(menuSel.length==1){toast("メニューは 1 つ以上お選びください");return}menuSel.splice(at,1)}
   else{
-    if(maxTotal()>0&&minOf(selMenus())+(+SHOP.menus[i].min)>maxTotal()){toast("施術の合計は "+maxTotal()+" 分までです");return}   // 上限を越える組み合わせは選べない
+    var kd=kindOf(SHOP.menus[i].name);var keep=kd?menuSel.filter(function(x){return kindOf(SHOP.menus[x].name)!==kd}):menuSel;   // （）の前が同じメニュー（バストアップの4つ）は入れかえる（2026/11/6）
+    if(maxTotal()>0&&minOf(keep.map(function(x){return SHOP.menus[x]}))+(+SHOP.menus[i].min)>maxTotal()){toast("施術の合計は "+maxTotal()+" 分までです");return}   // 上限を越える組み合わせは選べない
+    menuSel=keep;
     menuSel.push(i)}
   menuSel.sort(function(a,b){return a-b});
   renderCust()}

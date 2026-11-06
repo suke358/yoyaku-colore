@@ -102,6 +102,8 @@ export function priceOf(ms) {   // テストから直接呼べるように expor
 /** 名前をつないで台帳・メールに書く形に（例「よもぎ蒸し＋ボディケア 30分」） @param {ShopMenu[]} ms @returns {string} */
 function namesOf(ms) { return ms.map(function (m) { return String(m.name); }).join('＋'); }
 // 送られたメニューを設定から引く：menus（名前の配列。2026/10/28）があればそれ、なければ menu（1 つ）。配列は 1 つ以上・全部が設定にある名前・同じ名前は 2 回入れない
+/** メニューの種類：「バストアップ（5回コース）」→「バストアップ」。（）がなければ空（2026/11/6） @param {string} name @returns {string} */
+export function kindOf(name) { var k = /^(.+?)（.+）$/.exec(String(name)); return k ? k[1] : ''; }
 /** @param {any} b @returns {{ menus: ShopMenu[] }|{ error: string }} */
 function pickMenus(b) {
   /** @type {unknown[]} */
@@ -123,6 +125,10 @@ function pickMenus(b) {
     if (seen[m.name]) return { error: '同じメニューが 2 回入っています' };
     seen[m.name] = true; out.push(m);
   }
+  // 「バストアップ（初回体験）」「バストアップ（5回コース）」のように（）の前が同じメニューは 1 つだけ（2026/11/6）
+  /** @type {Record<string, boolean>} */
+  var kinds = {};
+  for (var q = 0; q < out.length; q++) { var kd = kindOf(out[q].name); if (!kd) continue; if (kinds[kd]) return { error: kd + 'は 1 つだけお選びください' }; kinds[kd] = true; }
   if (MAX_TOTAL_MIN > 0 && minOf(out) > MAX_TOTAL_MIN) return { error: '施術の合計は ' + MAX_TOTAL_MIN + ' 分までです。組み合わせを減らすか、LINE かお電話でご相談ください' };   // 上限（2026/10/28 決定）
   return { menus: out };
 }

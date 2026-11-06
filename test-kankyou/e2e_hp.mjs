@@ -77,6 +77,19 @@ try {
   });
 
   let cancelUrl = '';
+  await step('HP の予約欄：バストアップを押すと4つ（初回体験・通常1回・5回コース・10回コース）から1つ選ぶ。1つだけでも料金の目安が出る（2026/11/6）', async () => {
+    await page.goto(H + '/#reserve');
+    await page.waitForSelector('#ycMenus button', { timeout: 15000 });
+    await page.locator('#ycMenus button[data-i]', { hasText: 'バストアップ' }).first().click();
+    const subs = await page.$$eval('#ycMenus button.yc-sub', (bs) => bs.map((b) => b.textContent));
+    ok(subs.length === 4 && /初回体験/.test(subs[0]) && /10回コース/.test(subs[3]), 'バストアップの4つが出ない：' + subs.join(' / '));
+    await page.locator('#ycMenus button.yc-sub', { hasText: '初回体験' }).click();
+    ok((await page.textContent('#ycDur')).includes('料金の目安　6,600円'), '1つだけで料金の目安が出ない：' + await page.textContent('#ycDur'));
+    await page.locator('#ycMenus button.yc-sub', { hasText: '5回コース' }).click();
+    const on = await page.$$eval('#ycMenus button.yc-sub[aria-pressed="true"]', (bs) => bs.map((b) => b.textContent));
+    ok(on.length === 1 && /5回コース/.test(on[0]), '入れかわらない：' + on.join(' / '));
+    ok((await page.textContent('#ycDur')).includes('39,600円'), '5回コースの料金が出ない：' + await page.textContent('#ycDur'));
+  });
   await step('HP の予約欄で予約する（メニュー → 日付 → 10:00 → 入力 → 確認画面 → 予約する）→ 送ったつもりのメール 2 通', async () => {
     const n0 = (await mails()).length;
     await page.goto(H + '/#reserve');

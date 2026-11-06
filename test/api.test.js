@@ -4,7 +4,7 @@
 import { SELF, env } from 'cloudflare:test';
 import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import shopText from '../public/shop.jsonc?raw';
-import { forgetOld, migrate, sendGas, limitCheck, insertNet, priceOf } from '../src/worker.js';
+import { forgetOld, migrate, sendGas, limitCheck, insertNet, priceOf, kindOf } from '../src/worker.js';
 
 const SHOP = JSON.parse(shopText.replace(/^\s*\/\/.*$/gm, '').replace(/[ \t]+\/\/[^"\n]*$/gm, ''));
 const PRE = +SHOP.preMin || 0, BUF = +SHOP.bufferMin || 0, STEP = +SHOP.stepMin || 30;
@@ -730,15 +730,16 @@ describe('複数メニュー（menus＝名前の配列。2026/10/28）', () => {
   const EXTRA = (ms) => ms.reduce((a, m) => a + (+m.extraMin || 0), 0);
   it('上限：施術の合計が maxTotalMin を超える組み合わせは 400（枠を取らない）。ぴったり・以下は 200。設定の全メニューは越える', async () => {
     expect(MAXT).toBeGreaterThan(0);
-    const all = SHOP.menus.map((m) => m.name);
-    expect(SHOP.menus.reduce((a, m) => a + +m.min, 0)).toBeGreaterThan(MAXT);
+    const UNIQ = SHOP.menus.filter((m, i, a) => !kindOf(m.name) || a.findIndex((x) => kindOf(x.name) === kindOf(m.name)) === i);   // （）の前が同じメニューは 1 つだけ（2026/11/6）
+    const all = UNIQ.map((m) => m.name);
+    expect(UNIQ.reduce((a, m) => a + +m.min, 0)).toBeGreaterThan(MAXT);
     await setHours(FAR, '06:00', '23:00');
     const r = await (await bookM(FAR, '10:00', all)).json();
     expect(r.ok).toBeUndefined();
     expect(r.error).toContain(MAXT + ' 分まで');
     expect(await blocksOf(FAR)).toHaveLength(0);
     // 合計がちょうど上限になる組（min を大きい順に足して作る）か、上限以下の組
-    const sorted = SHOP.menus.slice().sort((a, b) => +b.min - +a.min);
+    const sorted = UNIQ.slice().sort((a, b) => +b.min - +a.min);
     const pick = []; let sum = 0;
     for (const m of sorted) if (sum + +m.min <= MAXT) { pick.push(m); sum += +m.min; }
     expect(pick.length).toBeGreaterThan(1);
@@ -852,5 +853,31 @@ describe('複数メニュー（menus＝名前の配列。2026/10/28）', () => {
     expect((await bookM(FAR, '10:00', PAIR)).status).toBe(200);
     expect((await bookM(FAR, '14:00', PAIR)).status).toBe(200);
     expect((await bookM(FAR, '18:00', PAIR)).status).toBe(429);
+  });
+});
+
+// ---- バストアップの4つ（2026/11/6）：（）の前が同じメニューは 1 つだけ ----
+describe('バストアップの4つ（2026/11/6）', () => {
+  it('kindOf は（）の前を返す。（）がなければ空', () => {
+    expect(kindOf('バストアップ（5回コース）')).toBe('バストアップ');
+    expect(kindOf('よもぎ蒸し')).toBe('');
+    expect(kindOf('ボディケア 30分')).toBe('');
+  });
+  it('shop.jsonc にバストアップが4つ（初回体験 6,600円・通常1回 8,800円・5回コース 39,600円・10回コース 74,800円・60分）', () => {
+    const bs = SHOP.menus.filter((m) => kindOf(m.name) === 'バストアップ').map((m) => [m.name, +m.min, m.price]);
+    expect(bs).toEqual([['バストアップ（初回体験）', 60, '6,600円'], ['バストアップ（通常1回）', 60, '8,800円'], ['バストアップ（5回コース）', 60, '39,600円'], ['バストアップ（10回コース）', 60, '74,800円']]);
+  });
+  const bookB = (names) => post('/api/book', { date: FAR, start: '10:00', menus: names, name: 'テスト 太郎', tel: '090-0000-0000', email: 'test@example.com' });
+  it('バストアップを 2 つ（初回体験＋5回コース）は 400 で枠を取らない', async () => {
+    await setHours(FAR, '10:00', '18:00');
+    const r = await bookB(['バストアップ（初回体験）', 'バストアップ（5回コース）']);
+    expect(r.status).toBe(400);
+    expect((await r.json()).error).toContain('バストアップは 1 つだけ');
+  });
+  it('5回コースだけなら通る。料金は 39,600円、ほかのメニューとは一緒に選べる', async () => {
+    await setHours(FAR, '10:00', '18:00');
+    const r = await (await bookB(['よもぎ蒸し', 'バストアップ（5回コース）'])).json();
+    expect(r.ok).toBe(true);
+    expect(r.price).toBe('45,100円');   // 5,500＋39,600
   });
 });
